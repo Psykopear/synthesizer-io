@@ -13,33 +13,33 @@
 // limitations under the License.
 
 //! Datatypes representing the model of a patching grid.
+use druid::Data;
+use druid::im::{Vector, HashSet};
 
-use std::collections::HashSet;
-
-#[derive(Default)]
+#[derive(Default, Data, Clone)]
 pub struct WireGrid {
     grid: HashSet<(u16, u16, bool)>,
-    jumpers: Vec<(u16, u16, u16, u16)>,
+    jumpers: Vector<(u16, u16, u16, u16)>,
 }
 
-#[derive(Default)]
+#[derive(Default, Data, Clone)]
 pub struct ModuleGrid {
-    modules: Vec<ModuleInstance>,
+    modules: Vector<ModuleInstance>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Data, Clone, Debug, PartialEq, Eq)]
 pub struct ModuleInstance {
     pub loc: (u16, u16),
     pub spec: ModuleSpec,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Data, Clone, Debug, PartialEq, Eq)]
 pub struct ModuleSpec {
     pub size: (u16, u16),
     pub name: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Data, Clone, Debug)]
 pub enum Delta {
     Wire(WireDelta),
     Jumper(JumperDelta),
@@ -48,13 +48,13 @@ pub enum Delta {
     Module(ModuleInstance),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Data, Clone, Debug)]
 pub struct WireDelta {
     pub grid_ix: (u16, u16, bool),
     pub val: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Data, Clone, Debug)]
 pub struct JumperDelta {
     pub start: (u16, u16),
     pub end: (u16, u16),
@@ -93,7 +93,7 @@ impl WireGrid {
         //println!("apply jumper {:?}", delta);
         let coords = (delta.start.0, delta.start.1, delta.end.0, delta.end.1);
         if delta.val {
-            self.jumpers.push(coords);
+            self.jumpers.push_back(coords);
         } else {
             if let Some(pos) = self.jumpers.iter().position(|&c| c == coords) {
                 self.jumpers.remove(pos);
@@ -125,7 +125,7 @@ impl ModuleInstance {
 impl ModuleGrid {
     /// Add a module instance to the grid.
     pub fn add(&mut self, instance: ModuleInstance) {
-        self.modules.push(instance);
+        self.modules.push_back(instance);
     }
 
     /// Iterate through the instances on the grid.

@@ -14,16 +14,23 @@
 
 //! Piano keyboard widget.
 
-use kurbo::Rect;
+use druid::kurbo::Rect;
+use druid::Color;
+use druid::Data;
+use druid::Env;
+use druid::Event;
+use druid::EventCtx;
+use druid::LifeCycle;
+use druid::LifeCycleCtx;
+use druid::Size;
+use druid::UpdateCtx;
 
-use piet::{FillRule, RenderContext};
+use druid::piet::RenderContext;
 
 use druid::widget::Widget;
-use druid::MouseEvent;
-use druid::{BoxConstraints, Geometry, LayoutResult, Ui};
-use druid::{HandlerCtx, Id, LayoutCtx, PaintCtx};
-
-use synthesizer_io_core::engine::NoteEvent;
+use druid::BoxConstraints;
+use druid::{LayoutCtx, PaintCtx};
+// use synthesizer_io_core::engine::NoteEvent;
 
 pub struct Piano {
     start_note: u8,
@@ -57,13 +64,57 @@ const NOTE_POS: &[(u8, u8)] = &[
 
 const INSET: f32 = 2.0;
 
-impl Widget for Piano {
-    fn paint(&mut self, paint_ctx: &mut PaintCtx, geom: &Geometry) {
-        let rc = &mut *paint_ctx.render_ctx;
-        let black = rc.solid_brush(0x080800ff).unwrap();
-        let white = rc.solid_brush(0xf0f0eaff).unwrap();
-        let active = rc.solid_brush(0x107010ff).unwrap();
-        let (x, y) = geom.pos;
+impl<T: Data> Widget<T> for Piano {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut T, env: &Env) {
+        match event {
+            Event::MouseDown(event) => {
+                if event.count > 0 {
+                    ctx.set_active(true);
+                    let u = event.pos.x / self.size.0 as f64;
+                    let v = event.pos.y / self.size.1 as f64;
+                    for note in self.start_note..self.end_note {
+                        let (u0, v0, u1, v1) = self.note_geom(note);
+                        if u >= u0 as f64 && u < u1 as f64 && v >= v0 as f64 && v < v1 as f64 {
+                            self.cur_note = Some(note);
+                            break;
+                        }
+                    }
+                    if let Some(note) = self.cur_note {
+                        self.pressed[note as usize] = true;
+                        // ctx.send_event(NoteEvent {
+                        //     down: true,
+                        //     note: note,
+                        //     velocity: 100,
+                        // });
+                        ctx.request_paint();
+                    }
+                } else {
+                    ctx.set_active(false);
+                    if let Some(note) = self.cur_note {
+                        self.pressed[note as usize] = false;
+                        // TODO
+                        // ctx.send_event(NoteEvent {
+                        //     down: false,
+                        //     note: note,
+                        //     velocity: 0,
+                        // });
+                        ctx.request_paint();
+                    }
+                    self.cur_note = None;
+                }
+            }
+            _ => (),
+        }
+    }
+    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &T, env: &Env) {}
+    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &T, data: &T, env: &Env) {}
+
+    fn paint(&mut self, ctx: &mut PaintCtx, data: &T, env: &Env) {
+        let black = ctx.solid_brush(Color::Rgba32(0x080800ff));
+        let white = ctx.solid_brush(Color::Rgba32(0xf0f0eaff));
+        let active = ctx.solid_brush(Color::Rgba32(0x107010ff));
+        // let (x, y) = geom.pos;
+        let (x, y) = (0.0, 0.0);
 
         for note in self.start_note..self.end_note {
             let (u0, v0, u1, v1) = self.note_geom(note);
@@ -76,66 +127,17 @@ impl Widget for Piano {
                     &white
                 }
             };
-            let x0 = x + u0 * geom.size.0 + INSET;
-            let y0 = y + v0 * geom.size.1 + INSET;
-            let x1 = x + u1 * geom.size.0 - INSET;
-            let y1 = y + v1 * geom.size.1 - INSET;
+            let x0 = x + u0 * ctx.size().width as f32 + INSET;
+            let y0 = y + v0 * ctx.size().height as f32 + INSET;
+            let x1 = x + u1 * ctx.size().width as f32 - INSET;
+            let y1 = y + v1 * ctx.size().height as f32 - INSET;
 
-            rc.fill(
-                Rect::new(x0 as f64, y0 as f64, x1 as f64, y1 as f64),
-                color,
-                FillRule::NonZero,
-            );
+            ctx.fill(Rect::new(x0 as f64, y0 as f64, x1 as f64, y1 as f64), color);
         }
     }
 
-    fn layout(
-        &mut self,
-        bc: &BoxConstraints,
-        _children: &[Id],
-        _size: Option<(f32, f32)>,
-        _ctx: &mut LayoutCtx,
-    ) -> LayoutResult {
-        let size = bc.constrain((100.0, 100.0));
-        self.size = size;
-        LayoutResult::Size(size)
-    }
-
-    fn mouse(&mut self, event: &MouseEvent, ctx: &mut HandlerCtx) -> bool {
-        if event.count > 0 {
-            ctx.set_active(true);
-            let u = event.x / self.size.0;
-            let v = event.y / self.size.1;
-            for note in self.start_note..self.end_note {
-                let (u0, v0, u1, v1) = self.note_geom(note);
-                if u >= u0 && u < u1 && v >= v0 && v < v1 {
-                    self.cur_note = Some(note);
-                    break;
-                }
-            }
-            if let Some(note) = self.cur_note {
-                self.pressed[note as usize] = true;
-                ctx.send_event(NoteEvent {
-                    down: true,
-                    note: note,
-                    velocity: 100,
-                });
-                ctx.invalidate();
-            }
-        } else {
-            ctx.set_active(false);
-            if let Some(note) = self.cur_note {
-                self.pressed[note as usize] = false;
-                ctx.send_event(NoteEvent {
-                    down: false,
-                    note: note,
-                    velocity: 0,
-                });
-                ctx.invalidate();
-            }
-            self.cur_note = None;
-        }
-        true
+    fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints, data: &T, env: &Env) -> Size {
+        bc.constrain((100.0, 100.0))
     }
 }
 
@@ -148,10 +150,6 @@ impl Piano {
             cur_note: None,
             size: (0.0, 0.0),
         }
-    }
-
-    pub fn ui(self, ctx: &mut Ui) -> Id {
-        ctx.add(self, &[])
     }
 
     fn note_pos(&self, note: u8) -> (i32, i32) {

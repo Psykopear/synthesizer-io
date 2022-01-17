@@ -23,6 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use cpal::{EventLoop, StreamData, UnknownTypeOutputBuffer};
+use druid::{WindowDesc, AppLauncher, Widget, Data};
 use midir::{MidiInput, MidiInputConnection};
 
 use synthesizer_io_core::modules;
@@ -32,82 +33,69 @@ use synthesizer_io_core::graph::Node;
 use synthesizer_io_core::module::N_SAMPLES_PER_CHUNK;
 use synthesizer_io_core::worker::Worker;
 
-use druid_win_shell::win_main;
-use druid_win_shell::window::WindowBuilder;
-
-use druid::widget::{Button, Column, Label, Padding, Row};
-use druid::{Id, UiMain, UiState};
+use druid::widget::{Button, Flex, Label, Padding};
 
 use grid::Delta;
 use synth::{Action, SynthState};
 use ui::{Patcher, PatcherAction, Piano, Scope, ScopeCommand};
 
-fn padded_flex_row(children: &[Id], ui: &mut UiState) -> Id {
-    let vec = children
-        .iter()
-        .map(|&child| Padding::uniform(5.0).ui(child, ui))
-        .collect::<Vec<_>>();
-    let mut row = Row::new();
-    for &child in &vec {
-        row.set_flex(child, 1.0);
-    }
-    row.ui(&vec, ui)
-}
-
 /// Build the main window UI
-fn build_ui(synth_state: SynthState, ui: &mut UiState) -> Id {
-    let button = Label::new("Synthesizer IO").ui(ui);
-    let patcher = Patcher::new().ui(ui);
-    let scope = Scope::new().ui(ui);
-    let piano = Piano::new().ui(ui);
+fn build_ui() -> impl Widget<SynthState> {
+    // let button = Label::new("Synthesizer IO");
+    // let patcher = Patcher::new();
 
-    let modules = &["sine", "control", "saw", "biquad", "adsr", "gain"];
-
-    let wire_b = Button::new("wire").ui(ui);
-    ui.add_listener(wire_b, move |_: &mut bool, mut ctx| {
-        ctx.poke(patcher, &mut PatcherAction::WireMode);
-    });
-    let jumper_b = Button::new("jumper").ui(ui);
-    ui.add_listener(jumper_b, move |_: &mut bool, mut ctx| {
-        ctx.poke(patcher, &mut PatcherAction::JumperMode);
-    });
-    let mut buttons = vec![wire_b, jumper_b];
-    for &module in modules {
-        let button = Button::new(module).ui(ui);
-        ui.add_listener(button, move |_: &mut bool, mut ctx| {
-            ctx.poke(patcher, &mut PatcherAction::Module(module.into()));
-        });
-        buttons.push(button);
-    }
-    let button_row = padded_flex_row(&buttons, ui);
-    let mut column = Column::new();
-    let mut mid_row = Row::new();
-    mid_row.set_flex(patcher, 3.0);
-    mid_row.set_flex(scope, 2.0);
-    let mid_row = mid_row.ui(&[patcher, scope], ui);
-    column.set_flex(mid_row, 3.0);
-    column.set_flex(piano, 1.0);
-    let column = column.ui(&[button, mid_row, button_row, piano], ui);
-    let synth_state = synth_state.ui(column, ui);
-    ui.add_listener(patcher, move |delta: &mut Vec<Delta>, mut ctx| {
-        ctx.poke_up(&mut Action::Patch(delta.clone()));
-    });
-    ui.add_listener(scope, move |_event: &mut (), mut ctx| {
-        let mut action = Action::Poll(Default::default());
-        ctx.poke_up(&mut action);
-        if let Action::Poll(samples) = action {
-            ctx.poke(scope, &mut ScopeCommand::Samples(samples));
-            //println!("polled {} events", _n_msg);
-        }
-    });
-    ui.add_listener(piano, move |event: &mut NoteEvent, mut ctx| {
-        ctx.poke_up(&mut Action::Note(event.clone()));
-    });
-    synth_state
+//     let button = Label::new("Synthesizer IO").ui(ui);
+//     let patcher = Patcher::new().ui(ui);
+//     let scope = Scope::new().ui(ui);
+//     let piano = Piano::new().ui(ui);
+//
+//     let modules = &["sine", "control", "saw", "biquad", "adsr", "gain"];
+//
+//     let wire_b = Button::new("wire").ui(ui);
+//     ui.add_listener(wire_b, move |_: &mut bool, mut ctx| {
+//         ctx.poke(patcher, &mut PatcherAction::WireMode);
+//     });
+//     let jumper_b = Button::new("jumper").ui(ui);
+//     ui.add_listener(jumper_b, move |_: &mut bool, mut ctx| {
+//         ctx.poke(patcher, &mut PatcherAction::JumperMode);
+//     });
+//     let mut buttons = vec![wire_b, jumper_b];
+//     for &module in modules {
+//         let button = Button::new(module).ui(ui);
+//         ui.add_listener(button, move |_: &mut bool, mut ctx| {
+//             ctx.poke(patcher, &mut PatcherAction::Module(module.into()));
+//         });
+//         buttons.push(button);
+//     }
+//     let button_row = padded_flex_row(&buttons, ui);
+//     let mut column = Flex::column();
+//     let mut mid_row = Flex::row();
+//     mid_row.set_flex(patcher, 3.0);
+//     mid_row.set_flex(scope, 2.0);
+//     let mid_row = mid_row.ui(&[patcher, scope], ui);
+//     column.set_flex(mid_row, 3.0);
+//     column.set_flex(piano, 1.0);
+//     let column = column.ui(&[button, mid_row, button_row, piano], ui);
+//     let synth_state = synth_state.ui(column, ui);
+//     ui.add_listener(patcher, move |delta: &mut Vec<Delta>, mut ctx| {
+//         ctx.poke_up(&mut Action::Patch(delta.clone()));
+//     });
+//     ui.add_listener(scope, move |_event: &mut (), mut ctx| {
+//         let mut action = Action::Poll(Default::default());
+//         ctx.poke_up(&mut action);
+//         if let Action::Poll(samples) = action {
+//             ctx.poke(scope, &mut ScopeCommand::Samples(samples));
+//             //println!("polled {} events", _n_msg);
+//         }
+//     });
+//     ui.add_listener(piano, move |event: &mut NoteEvent, mut ctx| {
+//         ctx.poke_up(&mut Action::Note(event.clone()));
+//     });
+//     synth_state
+    Label::new("CIAO")
 }
 
 fn main() {
-    druid_win_shell::init();
     let (mut worker, tx, rx) = Worker::create(1024);
     // TODO: get sample rate from cpal
     let mut engine = Engine::new(48_000.0, rx, tx);
@@ -122,18 +110,14 @@ fn main() {
     let module = Box::new(modules::Sum::new());
     worker.handle_node(Node::create(module, 0, [], []));
 
-    let mut run_loop = win_main::RunLoop::new();
-    let mut builder = WindowBuilder::new();
-    let mut state = UiState::new();
-    let root = build_ui(synth_state, &mut state);
-    state.set_root(root);
-    builder.set_handler(Box::new(UiMain::new(state)));
-    builder.set_title("Synthesizer IO");
-    let window = builder.build().unwrap();
+    let window = WindowDesc::new(build_ui()).title("Synthesizer IO");
+    let launcher = AppLauncher::with_window(window);
     let _midi_connection = setup_midi(engine); // keep from being dropped
     thread::spawn(move || run_cpal(worker));
-    window.show();
-    run_loop.run();
+    launcher
+        .log_to_console()
+        .launch(synth_state)
+        .expect("launch failed");
 }
 
 fn setup_midi(engine: Arc<Mutex<Engine>>) -> Option<MidiInputConnection<()>> {

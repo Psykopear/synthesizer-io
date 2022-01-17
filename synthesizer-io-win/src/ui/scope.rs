@@ -13,15 +13,12 @@
 // limitations under the License.
 
 //! Widget for oscilloscope display.
-
-use std::any::Any;
-
-use kurbo::Rect;
-
-use piet::{ImageFormat, InterpolationMode, RenderContext};
-
-use druid::{BoxConstraints, HandlerCtx, LayoutCtx, LayoutResult};
-use druid::{Geometry, Id, PaintCtx, Ui, Widget};
+use druid::{
+    kurbo::Rect,
+    piet::{ImageFormat, InterpolationMode, RenderContext},
+    BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, Size,
+    UpdateCtx, Widget, Selector,
+};
 
 use synthesize_scope as s;
 
@@ -37,57 +34,61 @@ pub enum ScopeCommand {
     Samples(Vec<f32>),
 }
 
-impl Widget for Scope {
-    fn paint(&mut self, paint_ctx: &mut PaintCtx, geom: &Geometry) {
-        let rc = &mut *paint_ctx.render_ctx;
+pub const START: Selector = Selector::new("synthesizer-io.scope.start");
+pub const SAMPLES: Selector<Vec<f32>> = Selector::new("synthesizer-io.scope.samples");
+
+impl<T: Data> Widget<T> for Scope {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut T, env: &Env) {
+        match event {
+            Event::Command(cmd) => {
+                if let Some(_) = cmd.get(START) {
+                    ctx.request_anim_frame();
+                }
+                if let Some(samples) = cmd.get(SAMPLES) {
+                    self.s.provide_samples(&samples);
+                }
+            }
+            Event::AnimFrame(interval) => {
+                ctx.request_paint();
+                ctx.request_anim_frame();
+            }
+            _ => (),
+        }
+    }
+
+    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &T, env: &Env) {}
+
+    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &T, data: &T, env: &Env) {}
+
+    // fn paint(&mut self, paint_ctx: &mut PaintCtx, geom: &Geometry) {
+    fn paint(&mut self, ctx: &mut PaintCtx, data: &T, env: &Env) {
+        // let rc = &mut *paint_ctx.render_ctx;
         let w = 640;
         let h = 480;
         let data = self.s.as_rgba();
-        let b = rc.make_image(w, h, &data, ImageFormat::RgbaPremul).unwrap();
-        let height = geom.size.1.min(0.75 * geom.size.0);
+        let b = ctx
+            .make_image(w, h, &data, ImageFormat::RgbaPremul)
+            .unwrap();
+        let height = ctx.size().height.min(0.75 * ctx.size().width);
         let width = height * (1.0 / 0.75);
-        let x0 = geom.pos.0;
-        let y0 = geom.pos.1;
-        rc.draw_image(
+        // TODO: origin?
+        let x0 = 0.0;
+        let y0 = 0.0;
+        let _w = ctx.size().width;
+        ctx.draw_image(
             &b,
             Rect::new(
-                (x0 + geom.size.0 - width) as f64,
-                y0 as f64,
-                (x0 + geom.size.0) as f64,
-                (y0 + height) as f64,
+                x0 + _w - width,
+                y0,
+                x0 + _w,
+                y0 + height,
             ),
             InterpolationMode::Bilinear,
         );
     }
 
-    fn layout(
-        &mut self,
-        bc: &BoxConstraints,
-        _children: &[Id],
-        _size: Option<(f32, f32)>,
-        _ctx: &mut LayoutCtx,
-    ) -> LayoutResult {
-        let size = bc.constrain((100.0, 100.0));
-        //self.size = size;
-        LayoutResult::Size(size)
-    }
-
-    fn poke(&mut self, payload: &mut Any, ctx: &mut HandlerCtx) -> bool {
-        if let Some(cmd) = payload.downcast_ref::<ScopeCommand>() {
-            match cmd {
-                ScopeCommand::Start => ctx.request_anim_frame(),
-                ScopeCommand::Samples(samples) => self.s.provide_samples(&samples),
-            }
-            true
-        } else {
-            println!("downcast failed in scope");
-            false
-        }
-    }
-
-    fn anim_frame(&mut self, _interval: u64, ctx: &mut HandlerCtx) {
-        ctx.send_event(());
-        ctx.request_anim_frame();
+    fn layout(&mut self, _ctx: &mut LayoutCtx, bc: &BoxConstraints, _data: &T, _env: &Env) -> Size {
+        bc.constrain((100.0, 100.0))
     }
 }
 
@@ -97,11 +98,11 @@ impl Scope {
         Scope { s }
     }
 
-    pub fn ui(self, ui: &mut Ui) -> Id {
-        let id = ui.add(self, &[]);
-        ui.poke(id, &mut ScopeCommand::Start);
-        id
-    }
+    // pub fn ui(self, ui: &mut Ui) -> Id {
+    //     let id = ui.add(self, &[]);
+    //     ui.poke(id, &mut ScopeCommand::Start);
+    //     id
+    // }
 
     fn draw_test_pattern(&mut self) {
         let mut xylast = None;

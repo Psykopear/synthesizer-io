@@ -14,8 +14,6 @@
 
 //! A renderer for a visual waveform display resembling an analog oscilloscope.
 
-extern crate fearless_simd;
-
 #[cfg(target_arch = "x86")]
 use std::arch::x86::*;
 
@@ -23,7 +21,7 @@ use std::arch::x86::*;
 use std::arch::x86_64::*;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use fearless_simd::{AvxF32, SimdF32};
+use fearless_simd::{AvxF32, SimdF32,};
 
 /// The box beyond which the gaussian can be clipped, as a multiple of radius.
 const CLIP_FACTOR: f32 = 2.5;
@@ -172,11 +170,11 @@ impl Scope {
     pub fn as_rgba(&self) -> Vec<u8> {
         let n = self.width * self.height;
         let mut im = vec![255; n * 4];
-        if is_x86_feature_detected!("avx") {
-            unsafe {
-                self.as_rgba_body_avx(&mut im);
-            }
-        } else {
+        // if is_x86_feature_detected!("avx") {
+        //     unsafe {
+        //         self.as_rgba_body_avx(&mut im);
+        //     }
+        // } else {
             // TODO: lut is probably faster scalar fallback
             for i in 0..n {
                 let x = self.glow[i];
@@ -187,7 +185,7 @@ impl Scope {
                 im[i * 4 + 1] = g;
                 im[i * 4 + 2] = b;
             }
-        }
+        // }
         self.render_grid_lines(&mut im);
         im
     }

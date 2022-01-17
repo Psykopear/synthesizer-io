@@ -78,7 +78,7 @@ impl Message {
 pub struct Node {
     pub ix: usize,
 
-    module: Box<Module>,
+    module: Box<dyn Module>,
     // module ix and index within its out_buf slice
     in_buf_wiring: Box<[(usize, usize)]>,
     // module ix and index within its out_ctrl slice
@@ -148,7 +148,7 @@ impl<T: Clone> IntoBoxedSlice<T> for [T; 2] {
 impl Node {
     /// Create a new node. The index must be given, as well as the input wiring.
     pub fn create<B1: IntoBoxedSlice<(usize, usize)>, B2: IntoBoxedSlice<(usize, usize)>>(
-        module: Box<Module>,
+        module: Box<dyn Module>,
         ix: usize,
         in_buf_wiring: B1,
         in_ctrl_wiring: B2,
@@ -204,7 +204,7 @@ impl Graph {
             })
     }
 
-    pub fn get_module_mut(&mut self, ix: usize) -> &mut Module {
+    pub fn get_module_mut(&mut self, ix: usize) -> &mut dyn Module {
         self.get_node_mut(ix).unwrap().module.deref_mut()
     }
 

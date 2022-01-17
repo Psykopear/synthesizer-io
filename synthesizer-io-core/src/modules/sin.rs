@@ -20,7 +20,7 @@ use std::ops::Deref;
 use crate::module::{Buffer, Module};
 
 const LG_N_SAMPLES: usize = 10;
-const N_SAMPLES: usize = (1 << LG_N_SAMPLES);
+const N_SAMPLES: usize = 1 << LG_N_SAMPLES;
 
 lazy_static! {
     static ref SINTAB: [f32; N_SAMPLES + 1] = {
@@ -61,7 +61,7 @@ impl Module for Sin {
     // Example of migration, although replacing one Sin module with another
     // isn't going to have much use unless the sample rate is changing. But
     // if so, at least the phase will be continuous now.
-    fn migrate(&mut self, old: &mut Module) {
+    fn migrate(&mut self, old: &mut dyn Module) {
         if let Some(old_sin) = old.to_any().downcast_ref::<Sin>() {
             self.phase = old_sin.phase;
         }

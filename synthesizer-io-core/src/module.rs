@@ -60,7 +60,7 @@ pub trait Module: ToAny + Send {
     /// Give modules an opportunity to migrate state from the previous module
     /// when it is replaced.
     #[allow(unused)]
-    fn migrate(&mut self, old: &mut Module) {}
+    fn migrate(&mut self, old: &mut dyn Module) {}
 
     /// Process one chunk of audio. Implementations are expected to be lock-free.
     fn process(
@@ -96,11 +96,11 @@ pub trait Module: ToAny + Send {
 }
 
 pub trait ToAny {
-    fn to_any(&mut self) -> &mut Any;
+    fn to_any(&mut self) -> &mut dyn Any;
 }
 
 impl<T: Sized + 'static> ToAny for T {
-    fn to_any(&mut self) -> &mut Any {
+    fn to_any(&mut self) -> &mut dyn Any {
         self
     }
 }

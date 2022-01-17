@@ -21,11 +21,11 @@ use std::ops::Deref;
 use crate::module::{Buffer, Module};
 
 const LG_N_SAMPLES: usize = 10;
-const N_SAMPLES: usize = (1 << LG_N_SAMPLES);
+const N_SAMPLES: usize = 1 << LG_N_SAMPLES;
 const N_PARTIALS_MAX: usize = N_SAMPLES / 2;
 
 const LG_SLICES_PER_OCTAVE: usize = 2;
-const SLICES_PER_OCTAVE: usize = (1 << LG_SLICES_PER_OCTAVE);
+const SLICES_PER_OCTAVE: usize = 1 << LG_SLICES_PER_OCTAVE;
 const N_SLICES: usize = 36;
 // 0.5 * (log(440./44100) / log(2) + log(440./48000) / log(2) + 2./12) + 1./64 - 3
 const SLICE_BASE: f32 = -9.609300863499751;
