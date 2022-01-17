@@ -13,16 +13,12 @@
 // limitations under the License.
 
 //! Synthesizer state and plumbing to UI.
-use std::sync::{Arc, Mutex};
-
-use union_find::{QuickUnionUf, UnionByRank, UnionFind};
-
-use druid::im::HashMap;
-use druid::{Data, Widget, Selector};
-
-use synthesizer_io_core::engine::{Engine, ModuleType, NoteEvent};
-
 use crate::grid::{Delta, ModuleGrid, ModuleInstance, WireDelta, WireGrid};
+use druid::im::HashMap;
+use druid::{Data, Selector};
+use std::sync::{Arc, Mutex};
+use synthesizer_io_core::engine::{Engine, ModuleType, NoteEvent};
+use union_find::{QuickUnionUf, UnionByRank, UnionFind};
 
 /// Synthesizer engine state.
 ///

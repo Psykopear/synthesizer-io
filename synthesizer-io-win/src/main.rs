@@ -23,21 +23,16 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use cpal::{EventLoop, StreamData, UnknownTypeOutputBuffer};
-use druid::{AppLauncher, Data, Widget, WindowDesc, WidgetExt};
+use druid::widget::{Button, Flex, Widget, WidgetExt};
+use druid::{AppLauncher, WindowDesc};
 use midir::{MidiInput, MidiInputConnection};
-
-use synthesizer_io_core::modules;
-
-use synthesizer_io_core::engine::{Engine, NoteEvent};
+use synth::SynthState;
+use synthesizer_io_core::engine::Engine;
 use synthesizer_io_core::graph::Node;
 use synthesizer_io_core::module::N_SAMPLES_PER_CHUNK;
+use synthesizer_io_core::modules;
 use synthesizer_io_core::worker::Worker;
-
-use druid::widget::{Button, Flex, Label, Padding};
-
-use grid::Delta;
-use synth::{Action, SynthState, PATCH};
-use ui::{Patcher, PatcherAction, WIRE_MODE, Piano, Scope, ScopeCommand, JUMPER_MODE, MODULE};
+use ui::{Patcher, Piano, Scope, JUMPER_MODE, MODULE, WIRE_MODE};
 
 /// Build the main window UI
 fn build_ui() -> impl Widget<SynthState> {
@@ -45,6 +40,7 @@ fn build_ui() -> impl Widget<SynthState> {
     let patcher = Patcher::new().on_click(|ctx, data, env| {
         // ctx.submit_command(PATCH.with(delta.clone));
     });
+    // patcher.event
     //     ui.add_listener(patcher, move |delta: &mut Vec<Delta>, mut ctx| {
     //         ctx.poke_up(&mut Action::Patch(delta.clone()));
     //     });

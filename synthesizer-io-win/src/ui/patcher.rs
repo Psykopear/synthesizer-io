@@ -14,26 +14,19 @@
 
 //! Widget representing patcher surface.
 
-use druid::piet::{Brush, LineCap, StrokeStyle, Text, TextLayout, TextLayoutBuilder};
-use itertools::Itertools;
-
+use crate::grid::{
+    Delta, JumperDelta, ModuleGrid, ModuleInstance, ModuleSpec, WireDelta, WireGrid,
+};
+use crate::synth::PATCH;
 use druid::kurbo::{BezPath, Line, Rect};
-
-// use druid::piet::{
-//     FillRule, FontBuilder, LineCap, RenderContext, StrokeStyle, Text, TextLayout, TextLayoutBuilder,
-// };
-
-// use druid::widget::MouseButton;
+use druid::piet::{Brush, LineCap, StrokeStyle, Text, TextLayoutBuilder};
+use druid::Widget;
 use druid::{
     BoxConstraints, Color, Data, Env, Event, EventCtx, LifeCycle, LifeCycleCtx, MouseButton,
     RenderContext, Selector, Size,
 };
 use druid::{LayoutCtx, PaintCtx};
-use druid::{MouseEvent, Widget};
-
-use crate::grid::{
-    Delta, JumperDelta, ModuleGrid, ModuleInstance, ModuleSpec, WireDelta, WireGrid,
-};
+use itertools::Itertools;
 
 pub struct Patcher {
     size: (f32, f32),
@@ -125,7 +118,12 @@ impl<T: Data> Widget<T> for Patcher {
         }
     }
 
-    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &T, env: &Env) {}
+    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &T, env: &Env) {
+        match event {
+            LifeCycle::HotChanged(false) => self.update_hover_lifecycle(None, ctx),
+            _ => (),
+        }
+    }
 
     fn layout(&mut self, _ctx: &mut LayoutCtx, bc: &BoxConstraints, _data: &T, _env: &Env) -> Size {
         bc.constrain((100.0, 100.0))
@@ -143,7 +141,7 @@ impl<T: Data> Widget<T> for Patcher {
                             PatcherMode::Jumper => PatcherMode::Wire,
                         };
                         self.mode = new_mode;
-                        // self.update_hover(None, ctx);
+                        self.update_hover(None, ctx);
                     }
                 }
                 match self.mode {
@@ -160,19 +158,17 @@ impl<T: Data> Widget<T> for Patcher {
                     PatcherMode::Module => {
                         if let Some(mut inst) = self.mod_hover.take() {
                             // TODO: reduce dupl
-                            let xc = event.pos.x as f32 - 0.5 * self.scale * (inst.spec.size.0 as f32 - 1.0);
-                            let yc = event.pos.y as f32 - 0.5 * self.scale * (inst.spec.size.1 as f32 - 1.0);
+                            let xc = event.pos.x as f32
+                                - 0.5 * self.scale * (inst.spec.size.0 as f32 - 1.0);
+                            let yc = event.pos.y as f32
+                                - 0.5 * self.scale * (inst.spec.size.1 as f32 - 1.0);
                             if let Some(loc) = self.xy_to_cell(xc, yc) {
                                 inst.loc = loc;
                                 if self.is_module_ok(&inst) {
-                                    let delta = vec![Delta::Module(inst)];
+                                    let delta = vec![Delta::Module(inst.clone())];
                                     self.apply_and_send_delta(delta, ctx);
-                                    /*
-                                    println!("placing {} at {:?}", inst.spec.name, inst.loc);
-                                    self.modules.add(inst);
-                                    ctx.send_event(vec![Delta::Module]);
-                                    ctx.invalidate();
-                                    */
+                                    ctx.submit_command(PATCH.with(vec![Delta::Module(inst)]));
+                                    ctx.request_paint();
                                 }
                             }
                         }
@@ -230,7 +226,7 @@ impl<T: Data> Widget<T> for Patcher {
                         let instance = self
                             .xy_to_cell(xc, yc)
                             .map(|loc| ModuleInstance { loc, spec });
-                        // self.update_hover(instance, ctx);
+                        self.update_hover(instance, ctx);
                     }
                     PatcherMode::Jumper => {
                         // NYI
@@ -250,7 +246,7 @@ impl<T: Data> Widget<T> for Patcher {
                     self.mode = PatcherMode::Module;
                     self.mod_name = name.clone();
                 }
-                // self.update_hover(None, ctx);
+                self.update_hover(None, ctx);
                 ctx.request_paint();
             }
             _ => (),
@@ -258,12 +254,6 @@ impl<T: Data> Widget<T> for Patcher {
     }
 
     fn update(&mut self, ctx: &mut druid::UpdateCtx, old_data: &T, data: &T, env: &Env) {}
-
-    // fn on_hot_changed(&mut self, hot: bool, ctx: &mut HandlerCtx) {
-    //     if !hot {
-    //         self.update_hover(None, ctx);
-    //     }
-    // }
 }
 
 impl Patcher {
@@ -438,7 +428,11 @@ impl Patcher {
             );
         }
         // let layout = &resources.text[&inst.spec.name];
-        let layout = ctx.text().new_text_layout(inst.spec.name.clone()).build().unwrap();
+        let layout = ctx
+            .text()
+            .new_text_layout(inst.spec.name.clone())
+            .build()
+            .unwrap();
         // TODO
         // let text_width = layout.layout_metrics().size.width;
         let text_width = 10.0;
@@ -576,12 +570,19 @@ impl Patcher {
         }
     }
 
-    // fn update_hover(&mut self, hover: Option<ModuleInstance>, ctx: &mut HandlerCtx) {
-    //     if self.mod_hover != hover {
-    //         self.mod_hover = hover;
-    //         ctx.invalidate();
-    //     }
-    // }
+    fn update_hover(&mut self, hover: Option<ModuleInstance>, ctx: &mut EventCtx) {
+        if self.mod_hover != hover {
+            self.mod_hover = hover;
+            ctx.request_paint();
+        }
+    }
+
+    fn update_hover_lifecycle(&mut self, hover: Option<ModuleInstance>, ctx: &mut LifeCycleCtx) {
+        if self.mod_hover != hover {
+            self.mod_hover = hover;
+            ctx.request_paint();
+        }
+    }
 
     fn is_module_ok(&self, inst: &ModuleInstance) -> bool {
         !self.modules.is_conflict(inst)
@@ -590,8 +591,8 @@ impl Patcher {
     fn apply_and_send_delta(&mut self, delta: Vec<Delta>, ctx: &mut EventCtx) {
         if !delta.is_empty() {
             self.apply_delta(&delta);
-            // ctx.send_event(delta);
-            // ctx.invalidate();
+            ctx.submit_command(PATCH.with(delta));
+            ctx.request_paint();
         }
     }
 

@@ -14,7 +14,11 @@
 
 //! Piano keyboard widget.
 
+use crate::synth::NOTE;
 use druid::kurbo::Rect;
+use druid::piet::RenderContext;
+use druid::widget::Widget;
+use druid::BoxConstraints;
 use druid::Color;
 use druid::Data;
 use druid::Env;
@@ -24,13 +28,8 @@ use druid::LifeCycle;
 use druid::LifeCycleCtx;
 use druid::Size;
 use druid::UpdateCtx;
-
-use druid::piet::RenderContext;
-
-use druid::widget::Widget;
-use druid::BoxConstraints;
 use druid::{LayoutCtx, PaintCtx};
-// use synthesizer_io_core::engine::NoteEvent;
+use synthesizer_io_core::engine::NoteEvent;
 
 pub struct Piano {
     start_note: u8,
@@ -81,23 +80,22 @@ impl<T: Data> Widget<T> for Piano {
                     }
                     if let Some(note) = self.cur_note {
                         self.pressed[note as usize] = true;
-                        // ctx.send_event(NoteEvent {
-                        //     down: true,
-                        //     note: note,
-                        //     velocity: 100,
-                        // });
+                        ctx.submit_command(NOTE.with(NoteEvent {
+                            down: true,
+                            note,
+                            velocity: 100,
+                        }));
                         ctx.request_paint();
                     }
                 } else {
                     ctx.set_active(false);
                     if let Some(note) = self.cur_note {
                         self.pressed[note as usize] = false;
-                        // TODO
-                        // ctx.send_event(NoteEvent {
-                        //     down: false,
-                        //     note: note,
-                        //     velocity: 0,
-                        // });
+                        ctx.submit_command(NOTE.with(NoteEvent {
+                            down: false,
+                            note,
+                            velocity: 0,
+                        }));
                         ctx.request_paint();
                     }
                     self.cur_note = None;
