@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use cpal::{EventLoop, StreamData, UnknownTypeOutputBuffer};
-use druid::{WindowDesc, AppLauncher, Widget, Data};
+use druid::{AppLauncher, Data, Widget, WindowDesc, WidgetExt};
 use midir::{MidiInput, MidiInputConnection};
 
 use synthesizer_io_core::modules;
@@ -36,63 +36,59 @@ use synthesizer_io_core::worker::Worker;
 use druid::widget::{Button, Flex, Label, Padding};
 
 use grid::Delta;
-use synth::{Action, SynthState};
-use ui::{Patcher, PatcherAction, Piano, Scope, ScopeCommand};
+use synth::{Action, SynthState, PATCH};
+use ui::{Patcher, PatcherAction, WIRE_MODE, Piano, Scope, ScopeCommand, JUMPER_MODE, MODULE};
 
 /// Build the main window UI
 fn build_ui() -> impl Widget<SynthState> {
     // let button = Label::new("Synthesizer IO");
-    // let patcher = Patcher::new();
-
-//     let button = Label::new("Synthesizer IO").ui(ui);
-//     let patcher = Patcher::new().ui(ui);
-//     let scope = Scope::new().ui(ui);
-//     let piano = Piano::new().ui(ui);
-//
-//     let modules = &["sine", "control", "saw", "biquad", "adsr", "gain"];
-//
-//     let wire_b = Button::new("wire").ui(ui);
-//     ui.add_listener(wire_b, move |_: &mut bool, mut ctx| {
-//         ctx.poke(patcher, &mut PatcherAction::WireMode);
-//     });
-//     let jumper_b = Button::new("jumper").ui(ui);
-//     ui.add_listener(jumper_b, move |_: &mut bool, mut ctx| {
-//         ctx.poke(patcher, &mut PatcherAction::JumperMode);
-//     });
-//     let mut buttons = vec![wire_b, jumper_b];
-//     for &module in modules {
-//         let button = Button::new(module).ui(ui);
-//         ui.add_listener(button, move |_: &mut bool, mut ctx| {
-//             ctx.poke(patcher, &mut PatcherAction::Module(module.into()));
-//         });
-//         buttons.push(button);
-//     }
-//     let button_row = padded_flex_row(&buttons, ui);
-//     let mut column = Flex::column();
-//     let mut mid_row = Flex::row();
-//     mid_row.set_flex(patcher, 3.0);
-//     mid_row.set_flex(scope, 2.0);
-//     let mid_row = mid_row.ui(&[patcher, scope], ui);
-//     column.set_flex(mid_row, 3.0);
-//     column.set_flex(piano, 1.0);
-//     let column = column.ui(&[button, mid_row, button_row, piano], ui);
-//     let synth_state = synth_state.ui(column, ui);
-//     ui.add_listener(patcher, move |delta: &mut Vec<Delta>, mut ctx| {
-//         ctx.poke_up(&mut Action::Patch(delta.clone()));
-//     });
-//     ui.add_listener(scope, move |_event: &mut (), mut ctx| {
-//         let mut action = Action::Poll(Default::default());
-//         ctx.poke_up(&mut action);
-//         if let Action::Poll(samples) = action {
-//             ctx.poke(scope, &mut ScopeCommand::Samples(samples));
-//             //println!("polled {} events", _n_msg);
-//         }
-//     });
-//     ui.add_listener(piano, move |event: &mut NoteEvent, mut ctx| {
-//         ctx.poke_up(&mut Action::Note(event.clone()));
-//     });
-//     synth_state
-    Label::new("CIAO")
+    let patcher = Patcher::new().on_click(|ctx, data, env| {
+        // ctx.submit_command(PATCH.with(delta.clone));
+    });
+    //     ui.add_listener(patcher, move |delta: &mut Vec<Delta>, mut ctx| {
+    //         ctx.poke_up(&mut Action::Patch(delta.clone()));
+    //     });
+    let scope = Scope::new();
+    //     ui.add_listener(scope, move |_event: &mut (), mut ctx| {
+    //         let mut action = Action::Poll(Default::default());
+    //         ctx.poke_up(&mut action);
+    //         if let Action::Poll(samples) = action {
+    //             ctx.poke(scope, &mut ScopeCommand::Samples(samples));
+    //             //println!("polled {} events", _n_msg);
+    //         }
+    //     });
+    let piano = Piano::new();
+    //     ui.add_listener(piano, move |event: &mut NoteEvent, mut ctx| {
+    //         ctx.poke_up(&mut Action::Note(event.clone()));
+    //     });
+    let modules = &["sine", "control", "saw", "biquad", "adsr", "gain"];
+    let wire_b = Button::new("wire").on_click(|ctx, data: &mut SynthState, env| {
+        ctx.submit_command(WIRE_MODE);
+    });
+    let jumper_b = Button::new("jumper").on_click(|ctx, data, env| {
+        ctx.submit_command(JUMPER_MODE);
+    });
+    let mut buttons = vec![wire_b, jumper_b];
+    for &module in modules {
+        let button = Button::new(module).on_click(|ctx, data, env| {
+            ctx.submit_command(MODULE.with(module.into()));
+        });
+        buttons.push(button);
+    }
+    //     let button_row = padded_flex_row(&buttons, ui);
+    let mut button_row = Flex::row();
+    for button in buttons {
+        button_row.add_child(button);
+    }
+    let mut column = Flex::column();
+    let mut mid_row = Flex::row();
+    mid_row.add_flex_child(patcher, 3.0);
+    mid_row.add_flex_child(scope, 2.0);
+    column.add_flex_child(mid_row, 3.0);
+    column.add_flex_child(piano, 1.0);
+    column
+    //     synth_state
+    // Label::new("CIAO")
 }
 
 fn main() {
@@ -126,8 +122,8 @@ fn setup_midi(engine: Arc<Mutex<Engine>>) -> Option<MidiInputConnection<()>> {
     let result = midi_in.connect(
         0,
         "in",
-        move |_ts, data, _| {
-            //println!("{}, {:?}", ts, data);
+        move |ts, data, _| {
+            println!("{}, {:?}", ts, data);
             let mut engine = engine.lock().unwrap();
             engine.dispatch_midi(data, time::precise_time_ns());
         },

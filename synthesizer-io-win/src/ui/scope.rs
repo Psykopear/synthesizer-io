@@ -16,8 +16,8 @@
 use druid::{
     kurbo::Rect,
     piet::{ImageFormat, InterpolationMode, RenderContext},
-    BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, Size,
-    UpdateCtx, Widget, Selector,
+    BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx,
+    Selector, Size, UpdateCtx, Widget,
 };
 
 use synthesize_scope as s;
@@ -26,12 +26,6 @@ pub struct Scope {
     // I might want to call the data structure ScopeBuf or some such,
     // too many name collisions :/
     s: s::Scope,
-}
-
-#[derive(Clone, Debug)]
-pub enum ScopeCommand {
-    Start,
-    Samples(Vec<f32>),
 }
 
 pub const START: Selector = Selector::new("synthesizer-io.scope.start");
@@ -77,12 +71,7 @@ impl<T: Data> Widget<T> for Scope {
         let _w = ctx.size().width;
         ctx.draw_image(
             &b,
-            Rect::new(
-                x0 + _w - width,
-                y0,
-                x0 + _w,
-                y0 + height,
-            ),
+            Rect::new(x0 + _w - width, y0, x0 + _w, y0 + height),
             InterpolationMode::Bilinear,
         );
     }

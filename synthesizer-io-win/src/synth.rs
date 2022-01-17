@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 use union_find::{QuickUnionUf, UnionByRank, UnionFind};
 
 use druid::im::HashMap;
-use druid::{Data, Widget};
+use druid::{Data, Widget, Selector};
 
 use synthesizer_io_core::engine::{Engine, ModuleType, NoteEvent};
 
@@ -58,6 +58,9 @@ pub enum Action {
     Poll(Vec<f32>),
 }
 
+pub const NOTE: Selector<NoteEvent> = Selector::new("synthesizer-io.synth.note");
+pub const PATCH: Selector<Vec<Delta>> = Selector::new("synthesizer-io.synth.patch");
+pub const POLL: Selector<Vec<f32>> = Selector::new("synthesizer-io.synth.poll");
 // impl Widget for SynthState {
 //     fn poke(&mut self, payload: &mut Any, _ctx: &mut HandlerCtx) -> bool {
 //         if let Some(action) = payload.downcast_mut::<Action>() {
