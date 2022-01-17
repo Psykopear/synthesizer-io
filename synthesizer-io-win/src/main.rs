@@ -22,10 +22,11 @@ use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use cpal::{EventLoop, StreamData, UnknownTypeOutputBuffer};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+// use cpal::{EventLoop, StreamData, UnknownTypeOutputBuffer};
 use druid::widget::{Button, Flex, Widget, WidgetExt};
 use druid::{AppLauncher, WindowDesc};
-use midir::{MidiInput, MidiInputConnection};
+use midir::{MidiInput, MidiInputConnection, MidiInputPort};
 use synth::SynthState;
 use synthesizer_io_core::engine::Engine;
 use synthesizer_io_core::graph::Node;
@@ -114,9 +115,20 @@ fn main() {
 
 fn setup_midi(engine: Arc<Mutex<Engine>>) -> Option<MidiInputConnection<()>> {
     let mut midi_in = MidiInput::new("midir input").expect("can't create midi input");
-    midi_in.ignore(::midir::Ignore::None);
+    midi_in.ignore(midir::Ignore::None);
+    let in_ports = midi_in.ports();
+    let in_port = match in_ports.len() {
+        0 => return None,
+        _ => {
+            println!(
+                "Choosing the first available input port: {}",
+                midi_in.port_name(&in_ports[0]).unwrap()
+            );
+            &in_ports[0]
+        }
+    };
     let result = midi_in.connect(
-        0,
+        in_port,
         "in",
         move |ts, data, _| {
             println!("{}, {:?}", ts, data);
@@ -131,42 +143,91 @@ fn setup_midi(engine: Arc<Mutex<Engine>>) -> Option<MidiInputConnection<()>> {
     result.ok()
 }
 
-fn run_cpal(mut worker: Worker) {
-    let event_loop = EventLoop::new();
-    let device = cpal::default_output_device().expect("no output device");
-    let mut supported_formats_range = device
-        .supported_output_formats()
-        .expect("error while querying formats");
-    let format = supported_formats_range
-        .next()
-        .expect("no supported format?!")
-        .with_max_sample_rate();
-    println!("format: {:?}", format);
-    let stream_id = event_loop.build_output_stream(&device, &format).unwrap();
-    event_loop.play_stream(stream_id);
+fn run_cpal(worker: Worker) {
+    let host = cpal::default_host();
+    let device = host.default_output_device().unwrap();
+    let config = device.default_output_config().unwrap();
+    match config.sample_format() {
+        cpal::SampleFormat::F32 => run::<f32>(&device, &config.into(), worker),
+        cpal::SampleFormat::I16 => run::<i16>(&device, &config.into(), worker),
+        cpal::SampleFormat::U16 => run::<u16>(&device, &config.into(), worker),
+    };
 
-    event_loop.run(move |_stream_id, stream_data| {
-        match stream_data {
-            StreamData::Output {
-                buffer: UnknownTypeOutputBuffer::F32(mut buf),
-            } => {
-                let buf_slice = buf.deref_mut();
-                let mut i = 0;
-                let mut timestamp = time::precise_time_ns();
-                while i < buf_slice.len() {
-                    // should let the graph generate stereo
-                    let buf = worker.work(timestamp)[0].get();
-                    for j in 0..N_SAMPLES_PER_CHUNK {
-                        buf_slice[i + j * 2] = buf[j];
-                        buf_slice[i + j * 2 + 1] = buf[j];
+    // let event_loop = EventLoop::new();
+    // let device = cpal::default_output_device().expect("no output device");
+    // let mut supported_formats_range = device
+    //     .supported_output_formats()
+    //     .expect("error while querying formats");
+    // let format = supported_formats_range
+    //     .next()
+    //     .expect("no supported format?!")
+    //     .with_max_sample_rate();
+    // println!("format: {:?}", format);
+    //     let stream_id = event_loop.build_output_stream(&device, &format).unwrap();
+    //     event_loop.play_stream(stream_id);
+    //
+    //     event_loop.run(move |_stream_id, stream_data| {
+    //         match stream_data {
+    //             StreamData::Output {
+    //                 buffer: UnknownTypeOutputBuffer::F32(mut buf),
+    //             } => {
+    //                 let buf_slice = buf.deref_mut();
+    //                 let mut i = 0;
+    //                 let mut timestamp = time::precise_time_ns();
+    //                 while i < buf_slice.len() {
+    //                     // should let the graph generate stereo
+    //                     let buf = worker.work(timestamp)[0].get();
+    //                     for j in 0..N_SAMPLES_PER_CHUNK {
+    //                         buf_slice[i + j * 2] = buf[j];
+    //                         buf_slice[i + j * 2 + 1] = buf[j];
+    //                     }
+    //
+    //                     // TODO: calculate properly, magic value is 64 * 1e9 / 44_100
+    //                     timestamp += 1451247 * (N_SAMPLES_PER_CHUNK as u64) / 64;
+    //                     i += N_SAMPLES_PER_CHUNK * 2;
+    //                 }
+    //             }
+    //             _ => panic!("Can't handle output buffer format"),
+    //         }
+    //     });
+}
+
+pub fn run<T>(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    mut worker: Worker,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    T: cpal::Sample,
+{
+    // let sample_rate = config.sample_rate.0 as f32;
+    // let channels = config.channels as usize;
+    let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
+
+    let stream = device.build_output_stream(
+        config,
+        move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+            let mut i = 0;
+            let mut timestamp = time::precise_time_ns();
+            while i < data.len() {
+                // should let the graph generate stereo
+                let buf = worker.work(timestamp)[0].get();
+                for j in 0..N_SAMPLES_PER_CHUNK {
+                    if data.len() > (i + j * 2 + 1) {
+                        let value: T = cpal::Sample::from::<f32>(&buf[j]);
+                        data[i + j * 2] = value;
+                        data[i + j * 2 + 1] = value;
                     }
-
-                    // TODO: calculate properly, magic value is 64 * 1e9 / 44_100
-                    timestamp += 1451247 * (N_SAMPLES_PER_CHUNK as u64) / 64;
-                    i += N_SAMPLES_PER_CHUNK * 2;
                 }
+
+                // TODO: calculate properly, magic value is 64 * 1e9 / 44_100
+                timestamp += 1451247 * (N_SAMPLES_PER_CHUNK as u64) / 64;
+                i += N_SAMPLES_PER_CHUNK * 2;
+                // i += N_SAMPLES_PER_CHUNK;
             }
-            _ => panic!("Can't handle output buffer format"),
-        }
-    });
+        },
+        err_fn,
+    )?;
+    stream.play()?;
+    loop {};
 }
