@@ -126,7 +126,7 @@ impl<T: Data> Widget<T> for Patcher {
     }
 
     fn layout(&mut self, _ctx: &mut LayoutCtx, bc: &BoxConstraints, _data: &T, _env: &Env) -> Size {
-        bc.constrain((100.0, 100.0))
+        bc.max()
     }
 
     fn event(&mut self, ctx: &mut druid::EventCtx, event: &Event, data: &mut T, env: &Env) {

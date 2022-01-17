@@ -24,10 +24,10 @@ use std::thread;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 // use cpal::{EventLoop, StreamData, UnknownTypeOutputBuffer};
-use druid::widget::{Button, Flex, Widget, WidgetExt};
-use druid::{AppLauncher, WindowDesc};
+use druid::widget::{Button, Flex, Label, Widget, WidgetExt};
+use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Handled, Target, WindowDesc};
 use midir::{MidiInput, MidiInputConnection, MidiInputPort};
-use synth::SynthState;
+use synth::{SynthState, NOTE, PATCH, POLL};
 use synthesizer_io_core::engine::Engine;
 use synthesizer_io_core::graph::Node;
 use synthesizer_io_core::module::N_SAMPLES_PER_CHUNK;
@@ -35,57 +35,94 @@ use synthesizer_io_core::modules;
 use synthesizer_io_core::worker::Worker;
 use ui::{Patcher, Piano, Scope, JUMPER_MODE, MODULE, WIRE_MODE};
 
+struct Delegate {}
+
+impl AppDelegate<SynthState> for Delegate {
+    fn command(
+        &mut self,
+        _ctx: &mut DelegateCtx,
+        _target: Target,
+        cmd: &Command,
+        data: &mut SynthState,
+        _env: &Env,
+    ) -> Handled {
+        if let Some(note_event) = cmd.get(NOTE) {
+            let mut engine = data.engine.lock().unwrap();
+            engine.dispatch_note_event(note_event);
+            return Handled::Yes;
+        }
+        if let Some(delta) = cmd.get(PATCH) {
+            data.apply_patch_delta(delta);
+            return Handled::Yes;
+        }
+        if let Some(ref mut samples) = cmd.get(POLL) {
+            let mut engine = data.engine.lock().unwrap();
+            let _n_msg = engine.poll_rx();
+            *samples = &engine.poll_monitor();
+            return Handled::Yes;
+        }
+
+        Handled::No
+
+        // match *action {
+        //     Action::Note(ref note_event) => {
+        //         let mut engine = self.engine.lock().unwrap();
+        //         engine.dispatch_note_event(note_event);
+        //     }
+        //     Action::Patch(ref delta) => self.apply_patch_delta(delta),
+        //     Action::Poll(ref mut samples) => {
+        //         let mut engine = self.engine.lock().unwrap();
+        //         let _n_msg = engine.poll_rx();
+        //         *samples = engine.poll_monitor();
+        //     }
+        // }
+        // if let Some(number) = cmd.get(FINISH_SLOW_FUNCTION) {
+        //     // If the command we received is `FINISH_SLOW_FUNCTION` handle the payload.
+        //     data.processing = false;
+        //     data.value = *number;
+        //     Handled::Yes
+        // } else {
+        //     Handled::No
+        // }
+    }
+}
+
 /// Build the main window UI
 fn build_ui() -> impl Widget<SynthState> {
-    // let button = Label::new("Synthesizer IO");
-    let patcher = Patcher::new().on_click(|ctx, data, env| {
-        // ctx.submit_command(PATCH.with(delta.clone));
-    });
-    // patcher.event
-    //     ui.add_listener(patcher, move |delta: &mut Vec<Delta>, mut ctx| {
-    //         ctx.poke_up(&mut Action::Patch(delta.clone()));
-    //     });
+    let button = Label::new("Synthesizer IO");
+    let patcher = Patcher::new();
     let scope = Scope::new();
-    //     ui.add_listener(scope, move |_event: &mut (), mut ctx| {
-    //         let mut action = Action::Poll(Default::default());
-    //         ctx.poke_up(&mut action);
-    //         if let Action::Poll(samples) = action {
-    //             ctx.poke(scope, &mut ScopeCommand::Samples(samples));
-    //             //println!("polled {} events", _n_msg);
-    //         }
-    //     });
     let piano = Piano::new();
-    //     ui.add_listener(piano, move |event: &mut NoteEvent, mut ctx| {
-    //         ctx.poke_up(&mut Action::Note(event.clone()));
-    //     });
+
     let modules = &["sine", "control", "saw", "biquad", "adsr", "gain"];
-    let wire_b = Button::new("wire").on_click(|ctx, data: &mut SynthState, env| {
+
+    let wire_b = Button::new("wire").on_click(|ctx, _data: &mut SynthState, _env| {
         ctx.submit_command(WIRE_MODE);
     });
-    let jumper_b = Button::new("jumper").on_click(|ctx, data, env| {
+    let jumper_b = Button::new("jumper").on_click(|ctx, _data, _env| {
         ctx.submit_command(JUMPER_MODE);
     });
-    let mut buttons = vec![wire_b, jumper_b];
-    for &module in modules {
-        let button = Button::new(module).on_click(|ctx, data, env| {
-            ctx.submit_command(MODULE.with(module.into()));
-        });
-        buttons.push(button);
-    }
-    //     let button_row = padded_flex_row(&buttons, ui);
+
     let mut button_row = Flex::row();
-    for button in buttons {
-        button_row.add_child(button);
+    button_row.add_child(wire_b);
+    button_row.add_child(jumper_b);
+
+    for &module in modules {
+        button_row.add_child(Button::new(module).on_click(|ctx, _data, _env| {
+            ctx.submit_command(MODULE.with(module.into()));
+        }));
     }
-    let mut column = Flex::column();
-    let mut mid_row = Flex::row();
-    mid_row.add_flex_child(patcher, 3.0);
-    mid_row.add_flex_child(scope, 2.0);
-    column.add_flex_child(mid_row, 3.0);
-    column.add_flex_child(piano, 1.0);
-    column
-    //     synth_state
-    // Label::new("CIAO")
+
+    Flex::column()
+        .with_child(button)
+        .with_flex_child(
+            Flex::row()
+                .with_flex_child(patcher, 3.0)
+                .with_flex_child(scope, 2.0),
+            3.0,
+        )
+        .with_child(button_row)
+        .with_flex_child(piano, 1.0)
 }
 
 fn main() {
@@ -104,7 +141,7 @@ fn main() {
     worker.handle_node(Node::create(module, 0, [], []));
 
     let window = WindowDesc::new(build_ui()).title("Synthesizer IO");
-    let launcher = AppLauncher::with_window(window);
+    let launcher = AppLauncher::with_window(window).delegate(Delegate {});
     let _midi_connection = setup_midi(engine); // keep from being dropped
     thread::spawn(move || run_cpal(worker));
     launcher
@@ -148,48 +185,10 @@ fn run_cpal(worker: Worker) {
     let device = host.default_output_device().unwrap();
     let config = device.default_output_config().unwrap();
     match config.sample_format() {
-        cpal::SampleFormat::F32 => run::<f32>(&device, &config.into(), worker),
-        cpal::SampleFormat::I16 => run::<i16>(&device, &config.into(), worker),
-        cpal::SampleFormat::U16 => run::<u16>(&device, &config.into(), worker),
+        cpal::SampleFormat::F32 => run::<f32>(&device, &config.into(), worker).unwrap(),
+        cpal::SampleFormat::I16 => run::<i16>(&device, &config.into(), worker).unwrap(),
+        cpal::SampleFormat::U16 => run::<u16>(&device, &config.into(), worker).unwrap(),
     };
-
-    // let event_loop = EventLoop::new();
-    // let device = cpal::default_output_device().expect("no output device");
-    // let mut supported_formats_range = device
-    //     .supported_output_formats()
-    //     .expect("error while querying formats");
-    // let format = supported_formats_range
-    //     .next()
-    //     .expect("no supported format?!")
-    //     .with_max_sample_rate();
-    // println!("format: {:?}", format);
-    //     let stream_id = event_loop.build_output_stream(&device, &format).unwrap();
-    //     event_loop.play_stream(stream_id);
-    //
-    //     event_loop.run(move |_stream_id, stream_data| {
-    //         match stream_data {
-    //             StreamData::Output {
-    //                 buffer: UnknownTypeOutputBuffer::F32(mut buf),
-    //             } => {
-    //                 let buf_slice = buf.deref_mut();
-    //                 let mut i = 0;
-    //                 let mut timestamp = time::precise_time_ns();
-    //                 while i < buf_slice.len() {
-    //                     // should let the graph generate stereo
-    //                     let buf = worker.work(timestamp)[0].get();
-    //                     for j in 0..N_SAMPLES_PER_CHUNK {
-    //                         buf_slice[i + j * 2] = buf[j];
-    //                         buf_slice[i + j * 2 + 1] = buf[j];
-    //                     }
-    //
-    //                     // TODO: calculate properly, magic value is 64 * 1e9 / 44_100
-    //                     timestamp += 1451247 * (N_SAMPLES_PER_CHUNK as u64) / 64;
-    //                     i += N_SAMPLES_PER_CHUNK * 2;
-    //                 }
-    //             }
-    //             _ => panic!("Can't handle output buffer format"),
-    //         }
-    //     });
 }
 
 pub fn run<T>(
@@ -223,11 +222,10 @@ where
                 // TODO: calculate properly, magic value is 64 * 1e9 / 44_100
                 timestamp += 1451247 * (N_SAMPLES_PER_CHUNK as u64) / 64;
                 i += N_SAMPLES_PER_CHUNK * 2;
-                // i += N_SAMPLES_PER_CHUNK;
             }
         },
         err_fn,
     )?;
     stream.play()?;
-    loop {};
+    loop {}
 }

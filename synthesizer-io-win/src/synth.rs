@@ -31,7 +31,7 @@ pub struct SynthState {
     // We probably want to move to the synth state fully owning the engine, and
     // things like midi being routed through the synth state. But for now this
     // should work pretty well.
-    engine: Arc<Mutex<Engine>>,
+    pub engine: Arc<Mutex<Engine>>,
 
     // Map grid coordinates to union-find node.
     coord_to_node: HashMap<(u16, u16), usize>,
@@ -95,7 +95,7 @@ impl SynthState {
         }
     }
 
-    fn apply_patch_delta(&mut self, delta: &[Delta]) {
+    pub fn apply_patch_delta(&mut self, delta: &[Delta]) {
         for d in delta {
             match d {
                 Delta::Wire(WireDelta { grid_ix, val }) => {

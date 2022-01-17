@@ -77,7 +77,7 @@ impl<T: Data> Widget<T> for Scope {
     }
 
     fn layout(&mut self, _ctx: &mut LayoutCtx, bc: &BoxConstraints, _data: &T, _env: &Env) -> Size {
-        bc.constrain((100.0, 100.0))
+        bc.max()
     }
 }
 

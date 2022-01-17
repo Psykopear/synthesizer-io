@@ -67,39 +67,38 @@ impl<T: Data> Widget<T> for Piano {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut T, env: &Env) {
         match event {
             Event::MouseDown(event) => {
-                if event.count > 0 {
-                    ctx.set_active(true);
-                    let u = event.pos.x / self.size.0 as f64;
-                    let v = event.pos.y / self.size.1 as f64;
-                    for note in self.start_note..self.end_note {
-                        let (u0, v0, u1, v1) = self.note_geom(note);
-                        if u >= u0 as f64 && u < u1 as f64 && v >= v0 as f64 && v < v1 as f64 {
-                            self.cur_note = Some(note);
-                            break;
-                        }
+                ctx.set_active(true);
+                let u = event.pos.x / ctx.size().width;
+                let v = event.pos.y / ctx.size().height;
+                for note in self.start_note..self.end_note {
+                    let (u0, v0, u1, v1) = self.note_geom(note);
+                    if u >= u0 as f64 && u < u1 as f64 && v >= v0 as f64 && v < v1 as f64 {
+                        self.cur_note = Some(note);
+                        break;
                     }
-                    if let Some(note) = self.cur_note {
-                        self.pressed[note as usize] = true;
-                        ctx.submit_command(NOTE.with(NoteEvent {
-                            down: true,
-                            note,
-                            velocity: 100,
-                        }));
-                        ctx.request_paint();
-                    }
-                } else {
-                    ctx.set_active(false);
-                    if let Some(note) = self.cur_note {
-                        self.pressed[note as usize] = false;
-                        ctx.submit_command(NOTE.with(NoteEvent {
-                            down: false,
-                            note,
-                            velocity: 0,
-                        }));
-                        ctx.request_paint();
-                    }
-                    self.cur_note = None;
                 }
+                if let Some(note) = self.cur_note {
+                    self.pressed[note as usize] = true;
+                    ctx.submit_command(NOTE.with(NoteEvent {
+                        down: true,
+                        note,
+                        velocity: 100,
+                    }));
+                    ctx.request_paint();
+                }
+            }
+            Event::MouseUp(_) => {
+                ctx.set_active(false);
+                if let Some(note) = self.cur_note {
+                    self.pressed[note as usize] = false;
+                    ctx.submit_command(NOTE.with(NoteEvent {
+                        down: false,
+                        note,
+                        velocity: 0,
+                    }));
+                    ctx.request_paint();
+                }
+                self.cur_note = None;
             }
             _ => (),
         }
@@ -135,7 +134,7 @@ impl<T: Data> Widget<T> for Piano {
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints, data: &T, env: &Env) -> Size {
-        bc.constrain((100.0, 100.0))
+        bc.max()
     }
 }
 
