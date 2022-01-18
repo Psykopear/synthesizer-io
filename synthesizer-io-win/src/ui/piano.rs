@@ -26,6 +26,7 @@ use druid::Event;
 use druid::EventCtx;
 use druid::LifeCycle;
 use druid::LifeCycleCtx;
+use druid::MouseEvent;
 use druid::Size;
 use druid::UpdateCtx;
 use druid::{LayoutCtx, PaintCtx};
@@ -34,14 +35,10 @@ use synthesizer_io_core::engine::NoteEvent;
 pub struct Piano {
     start_note: u8,
     end_note: u8,
-
     pressed: [bool; 128],
     // Note corresponding to mouse press.
     cur_note: Option<u8>,
-
-    // Note: we could probably eliminate this if we had access to size
-    // in HandlerCtx. Alternatively, we could precompute width_scale.
-    size: (f32, f32),
+    dragging: bool,
 }
 
 const OCTAVE_WIDTH: i32 = 14;
@@ -66,26 +63,34 @@ const INSET: f32 = 2.0;
 impl<T: Data> Widget<T> for Piano {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut T, env: &Env) {
         match event {
-            Event::MouseDown(event) => {
-                ctx.set_active(true);
+            Event::MouseMove(event) => {
+                if !self.dragging { return };
                 let u = event.pos.x / ctx.size().width;
                 let v = event.pos.y / ctx.size().height;
+                let mut cur_note = None;
                 for note in self.start_note..self.end_note {
                     let (u0, v0, u1, v1) = self.note_geom(note);
                     if u >= u0 as f64 && u < u1 as f64 && v >= v0 as f64 && v < v1 as f64 {
-                        self.cur_note = Some(note);
+                        cur_note = Some(note);
                         break;
                     }
                 }
-                if let Some(note) = self.cur_note {
-                    self.pressed[note as usize] = true;
-                    ctx.submit_command(NOTE.with(NoteEvent {
-                        down: true,
-                        note,
-                        velocity: 100,
-                    }));
-                    ctx.request_paint();
+                if cur_note != self.cur_note {
+                    if let Some(note) = self.cur_note {
+                        self.pressed[note as usize] = false;
+                        ctx.submit_command(NOTE.with(NoteEvent {
+                            down: false,
+                            note,
+                            velocity: 0,
+                        }));
+                        ctx.request_paint();
+                    }
                 }
+                self.handle_mouse(ctx, event);
+            }
+            Event::MouseDown(event) => {
+                self.handle_mouse(ctx, event);
+                self.dragging = true;
             }
             Event::MouseUp(_) => {
                 ctx.set_active(false);
@@ -99,6 +104,7 @@ impl<T: Data> Widget<T> for Piano {
                     ctx.request_paint();
                 }
                 self.cur_note = None;
+                self.dragging = false;
             }
             _ => (),
         }
@@ -145,7 +151,7 @@ impl Piano {
             end_note: 72,
             pressed: [false; 128],
             cur_note: None,
-            size: (0.0, 0.0),
+            dragging: false,
         }
     }
 
@@ -164,5 +170,27 @@ impl Piano {
         let u = (x - start_x) as f32 * width_scale;
         let v = y as f32 * 0.5;
         (u, 0.5 - v, 2.0 * width_scale + u, 1.0 - v)
+    }
+
+    fn handle_mouse(&mut self, ctx: &mut EventCtx, event: &MouseEvent) {
+        ctx.set_active(true);
+        let u = event.pos.x / ctx.size().width;
+        let v = event.pos.y / ctx.size().height;
+        for note in self.start_note..self.end_note {
+            let (u0, v0, u1, v1) = self.note_geom(note);
+            if u >= u0 as f64 && u < u1 as f64 && v >= v0 as f64 && v < v1 as f64 {
+                self.cur_note = Some(note);
+                break;
+            }
+        }
+        if let Some(note) = self.cur_note {
+            self.pressed[note as usize] = true;
+            ctx.submit_command(NOTE.with(NoteEvent {
+                down: true,
+                note,
+                velocity: 100,
+            }));
+            ctx.request_paint();
+        }
     }
 }
