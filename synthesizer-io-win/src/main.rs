@@ -33,14 +33,14 @@ use synthesizer_io_core::graph::Node;
 use synthesizer_io_core::module::N_SAMPLES_PER_CHUNK;
 use synthesizer_io_core::modules;
 use synthesizer_io_core::worker::Worker;
-use ui::{Patcher, Piano, Scope, JUMPER_MODE, MODULE, WIRE_MODE};
+use ui::{Patcher, Piano, Scope, JUMPER_MODE, MODULE, WIRE_MODE, SAMPLES};
 
 struct Delegate {}
 
 impl AppDelegate<SynthState> for Delegate {
     fn command(
         &mut self,
-        _ctx: &mut DelegateCtx,
+        ctx: &mut DelegateCtx,
         _target: Target,
         cmd: &Command,
         data: &mut SynthState,
@@ -55,35 +55,12 @@ impl AppDelegate<SynthState> for Delegate {
             data.apply_patch_delta(delta);
             return Handled::Yes;
         }
-        if let Some(ref mut samples) = cmd.get(POLL) {
+        if let Some(_) = cmd.get(POLL) {
             let mut engine = data.engine.lock().unwrap();
-            let _n_msg = engine.poll_rx();
-            *samples = &engine.poll_monitor();
+            ctx.submit_command(SAMPLES.with(engine.poll_monitor()));
             return Handled::Yes;
         }
-
         Handled::No
-
-        // match *action {
-        //     Action::Note(ref note_event) => {
-        //         let mut engine = self.engine.lock().unwrap();
-        //         engine.dispatch_note_event(note_event);
-        //     }
-        //     Action::Patch(ref delta) => self.apply_patch_delta(delta),
-        //     Action::Poll(ref mut samples) => {
-        //         let mut engine = self.engine.lock().unwrap();
-        //         let _n_msg = engine.poll_rx();
-        //         *samples = engine.poll_monitor();
-        //     }
-        // }
-        // if let Some(number) = cmd.get(FINISH_SLOW_FUNCTION) {
-        //     // If the command we received is `FINISH_SLOW_FUNCTION` handle the payload.
-        //     data.processing = false;
-        //     data.value = *number;
-        //     Handled::Yes
-        // } else {
-        //     Handled::No
-        // }
     }
 }
 
@@ -212,6 +189,12 @@ where
                 // should let the graph generate stereo
                 let buf = worker.work(timestamp)[0].get();
                 for j in 0..N_SAMPLES_PER_CHUNK {
+                    // TODO: This check wasn't needed in the original version.
+                    // data.len() can change, and is not necessarily a multiple
+                    // of N_SAMPLES_PER_CHUNK * 2, so at some point I have a chunk
+                    // of data and not enough space left inside `data`.
+                    // What should I do there? For now I leave the rest of the
+                    // buffer as it is, but we lose at most one chunk of data.
                     if data.len() > (i + j * 2 + 1) {
                         let value: T = cpal::Sample::from::<f32>(&buf[j]);
                         data[i + j * 2] = value;

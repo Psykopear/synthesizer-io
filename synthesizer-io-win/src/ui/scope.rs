@@ -22,6 +22,8 @@ use druid::{
 
 use synthesize_scope as s;
 
+use crate::synth::POLL;
+
 pub struct Scope {
     // I might want to call the data structure ScopeBuf or some such,
     // too many name collisions :/
@@ -32,7 +34,7 @@ pub const START: Selector = Selector::new("synthesizer-io.scope.start");
 pub const SAMPLES: Selector<Vec<f32>> = Selector::new("synthesizer-io.scope.samples");
 
 impl<T: Data> Widget<T> for Scope {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut T, env: &Env) {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, _data: &mut T, _env: &Env) {
         match event {
             Event::Command(cmd) => {
                 if let Some(_) = cmd.get(START) {
@@ -42,7 +44,8 @@ impl<T: Data> Widget<T> for Scope {
                     self.s.provide_samples(&samples);
                 }
             }
-            Event::AnimFrame(interval) => {
+            Event::AnimFrame(_interval) => {
+                ctx.submit_command(POLL);
                 ctx.request_paint();
                 ctx.request_anim_frame();
             }
@@ -50,13 +53,18 @@ impl<T: Data> Widget<T> for Scope {
         }
     }
 
-    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &T, env: &Env) {}
+    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, _data: &T, _env: &Env) {
+        match event {
+            LifeCycle::WidgetAdded => {
+                ctx.submit_command(START);
+            }
+            _ => (),
+        }
+    }
 
-    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &T, data: &T, env: &Env) {}
+    fn update(&mut self, _ctx: &mut UpdateCtx, _old_data: &T, _data: &T, _env: &Env) {}
 
-    // fn paint(&mut self, paint_ctx: &mut PaintCtx, geom: &Geometry) {
-    fn paint(&mut self, ctx: &mut PaintCtx, data: &T, env: &Env) {
-        // let rc = &mut *paint_ctx.render_ctx;
+    fn paint(&mut self, ctx: &mut PaintCtx, _data: &T, _env: &Env) {
         let w = 640;
         let h = 480;
         let data = self.s.as_rgba();
@@ -86,12 +94,6 @@ impl Scope {
         let s = s::Scope::new(640, 480);
         Scope { s }
     }
-
-    // pub fn ui(self, ui: &mut Ui) -> Id {
-    //     let id = ui.add(self, &[]);
-    //     ui.poke(id, &mut ScopeCommand::Start);
-    //     id
-    // }
 
     fn draw_test_pattern(&mut self) {
         let mut xylast = None;
