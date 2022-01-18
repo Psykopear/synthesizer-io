@@ -18,9 +18,10 @@ use crate::grid::{
     Delta, JumperDelta, ModuleGrid, ModuleInstance, ModuleSpec, WireDelta, WireGrid,
 };
 use crate::synth::PATCH;
+use druid::im::HashMap;
 use druid::kurbo::{BezPath, Line, Rect};
 use druid::piet::{Brush, LineCap, StrokeStyle, Text, TextLayoutBuilder};
-use druid::Widget;
+use druid::{ArcStr, TextLayout, Widget};
 use druid::{
     BoxConstraints, Color, Data, Env, Event, EventCtx, LifeCycle, LifeCycleCtx, MouseButton,
     RenderContext, Selector, Size,
@@ -29,7 +30,6 @@ use druid::{LayoutCtx, PaintCtx};
 use itertools::Itertools;
 
 pub struct Patcher {
-    size: (f32, f32),
     grid_size: (usize, usize),
     offset: (f32, f32),
     scale: f32,
@@ -47,6 +47,8 @@ pub struct Patcher {
 
     jumper_start: Option<(u16, u16)>,
     jumper_hover: Option<(u16, u16)>,
+
+    resource: Option<PaintResources>,
 }
 
 #[derive(Debug)]
@@ -76,12 +78,11 @@ struct PaintResources {
     hover_bad: Brush,
     module_color: Brush,
     rounded: StrokeStyle,
+    text: HashMap<String, TextLayout<ArcStr>>,
 }
 
 impl PaintResources {
     fn create(ctx: &mut PaintCtx) -> PaintResources {
-        // PaintCtx API is awkward, can't borrow d2d_factory while render_target
-        // is borrowed. This works but should be improved (by having state splitting).
         let mut rounded = StrokeStyle::new();
         rounded.set_line_cap(LineCap::Round);
         let grid_color = ctx.solid_brush(Color::Rgba32(0x405070ff));
@@ -100,21 +101,30 @@ impl PaintResources {
             hover_bad,
             module_color,
             rounded,
+            text: HashMap::new(),
+        }
+    }
+
+    fn add_text(&mut self, text: &str, ctx: &mut PaintCtx) {
+        if !self.text.contains_key(text) {
+            let layout = TextLayout::from_text(text);
+            self.text.insert(text.to_string(), layout);
         }
     }
 }
 
 impl<T: Data> Widget<T> for Patcher {
-    fn paint(&mut self, ctx: &mut PaintCtx, data: &T, env: &Env) {
-        // TODO: retain these resources where possible
-        let mut resources = PaintResources::create(ctx);
-        // self.populate_text(&mut resources, ctx);
-        self.paint_wiregrid(ctx, &resources);
-        self.paint_modules(ctx, &resources);
-        self.paint_jumpers(ctx, &resources);
-        self.paint_pads(ctx, &resources);
+    fn paint(&mut self, ctx: &mut PaintCtx, _data: &T, _env: &Env) {
+        if self.resource.is_none() {
+            self.resource = Some(PaintResources::create(ctx));
+        }
+        self.populate_text(ctx);
+        self.paint_wiregrid(ctx);
+        self.paint_modules(ctx);
+        self.paint_jumpers(ctx);
+        self.paint_pads(ctx);
         if self.mode == PatcherMode::Jumper {
-            self.paint_jumper_hover(ctx, &resources);
+            self.paint_jumper_hover(ctx);
         }
     }
 
@@ -259,7 +269,6 @@ impl<T: Data> Widget<T> for Patcher {
 impl Patcher {
     pub fn new() -> Patcher {
         Patcher {
-            size: (0.0, 0.0),
             grid_size: (20, 16),
             offset: (5.0, 5.0),
             scale: 20.0,
@@ -276,10 +285,12 @@ impl Patcher {
 
             jumper_start: None,
             jumper_hover: None,
+
+            resource: None,
         }
     }
 
-    fn paint_wiregrid(&mut self, ctx: &mut PaintCtx, resources: &PaintResources) {
+    fn paint_wiregrid(&mut self, ctx: &mut PaintCtx) {
         // TODO: clip to geom
         //rt.push_axis_aligned_clip(geom, AntialiasMode::Aliased);
         let x0 = self.offset.0;
@@ -293,7 +304,7 @@ impl Patcher {
                         y0 + self.scale * (self.grid_size.1 as f32),
                     ),
                 ),
-                &resources.grid_color,
+                &self.resource.as_ref().unwrap().grid_color,
                 1.0,
             );
         }
@@ -306,7 +317,7 @@ impl Patcher {
                         y0 + self.scale * (i as f32),
                     ),
                 ),
-                &resources.grid_color,
+                &self.resource.as_ref().unwrap().grid_color,
                 1.0,
             );
         }
@@ -320,14 +331,14 @@ impl Patcher {
             };
             ctx.stroke(
                 line((x, y), (x1, y1)),
-                &resources.wire_color,
+                &self.resource.as_ref().unwrap().wire_color,
                 3.0,
                 // Some(&resources.rounded),
             );
         }
     }
 
-    fn paint_jumpers(&mut self, ctx: &mut PaintCtx, resources: &PaintResources) {
+    fn paint_jumpers(&mut self, ctx: &mut PaintCtx) {
         // let x = geom.pos.0 + self.offset.0;
         // let y = geom.pos.1 + self.offset.1;
         let x = self.offset.0;
@@ -340,30 +351,34 @@ impl Patcher {
             let s = 0.3 * self.scale / (x1 - x0).hypot(y1 - y0);
             let xu = (x1 - x0) * s;
             let yu = (y1 - y0) * s;
-            ctx.stroke(line((x0, y0), (x1, y1)), &resources.wire_color, 2.0);
+            ctx.stroke(
+                line((x0, y0), (x1, y1)),
+                &self.resource.as_ref().unwrap().wire_color,
+                2.0,
+            );
             let r = self.scale * 0.15;
             ctx.fill(
                 circle((x0, y0), r, 16),
-                &resources.wire_color,
+                &self.resource.as_ref().unwrap().wire_color,
                 // FillRule::NonZero,
             );
             ctx.fill(
                 circle((x1, y1), r, 16),
-                &resources.wire_color,
+                &self.resource.as_ref().unwrap().wire_color,
                 // FillRule::NonZero,
             );
             ctx.stroke(
                 line((x0 + xu, y0 + yu), (x1 - xu, y1 - yu)),
-                &resources.jumper_color,
+                &self.resource.as_ref().unwrap().jumper_color,
                 4.0,
                 // None,
             );
         }
     }
 
-    fn paint_modules(&mut self, ctx: &mut PaintCtx, resources: &PaintResources) {
+    fn paint_modules(&mut self, ctx: &mut PaintCtx) {
         for inst in self.modules.iter() {
-            self.paint_module(ctx, resources, inst);
+            self.paint_module(ctx, inst);
         }
         if let Some(ref inst) = self.mod_hover {
             let (i, j) = inst.loc;
@@ -373,9 +388,9 @@ impl Patcher {
             let x0 = self.offset.0;
             let y0 = self.offset.1;
             let color = if self.is_module_ok(inst) {
-                &resources.hover_ok
+                &self.resource.as_ref().unwrap().hover_ok
             } else {
-                &resources.hover_bad
+                &self.resource.as_ref().unwrap().hover_bad
             };
             ctx.fill(
                 Rect::new(
@@ -390,7 +405,7 @@ impl Patcher {
         }
     }
 
-    fn paint_module(&self, ctx: &mut PaintCtx, resources: &PaintResources, inst: &ModuleInstance) {
+    fn paint_module(&self, ctx: &mut PaintCtx, inst: &ModuleInstance) {
         // let x0 = geom.pos.0 + self.offset.0 + (inst.loc.0 as f32) * self.scale;
         // let y0 = geom.pos.1 + self.offset.1 + (inst.loc.1 as f32) * self.scale;
         let x0 = self.offset.0 + (inst.loc.0 as f32) * self.scale;
@@ -403,7 +418,7 @@ impl Patcher {
                 (x0 + (inst.spec.size.0 as f32 - inset) * self.scale) as f64,
                 (y0 + (inst.spec.size.1 as f32 - inset) * self.scale) as f64,
             ),
-            &resources.module_color,
+            &self.resource.as_ref().unwrap().module_color,
             // FillRule::NonZero,
         );
         if inst.spec.name == "control" {
@@ -416,31 +431,26 @@ impl Patcher {
             let width = 2.0;
             ctx.stroke(
                 line((xl, y), (xl - (0.5 + inset) * self.scale, y)),
-                &resources.module_color,
+                &self.resource.as_ref().unwrap().module_color,
                 width,
                 // None,
             );
             ctx.stroke(
                 line((xr, y), (xr + (0.5 + inset) * self.scale, y)),
-                &resources.module_color,
+                &self.resource.as_ref().unwrap().module_color,
                 width,
                 // None,
             );
         }
-        // let layout = &resources.text[&inst.spec.name];
-        let layout = ctx
-            .text()
-            .new_text_layout(inst.spec.name.clone())
-            .build()
-            .unwrap();
-        // TODO
-        // let text_width = layout.layout_metrics().size.width;
-        let text_width = 10.0;
-        let text_x = x0 + 0.5 * ((inst.spec.size.0 as f32) * self.scale - text_width);
-        ctx.draw_text(&layout, (text_x as f64, y0 as f64 + 12.0));
+        // Please don't call this paint if resources is not set yet
+        let layout = &self.resource.as_ref().unwrap().text[&inst.spec.name];
+        let text_width = layout.layout_metrics().size.width;
+        // let text_width = 10.0;
+        let text_x = x0 + 0.5 * ((inst.spec.size.0 as f32) * self.scale - text_width as f32);
+        layout.draw(ctx, (text_x as f64, y0 as f64 + 12.0));
     }
 
-    fn paint_jumper_hover(&self, ctx: &mut PaintCtx, resources: &PaintResources) {
+    fn paint_jumper_hover(&self, ctx: &mut PaintCtx) {
         if let Some((i, j)) = self.jumper_hover {
             // let xc = geom.pos.0 + self.offset.0 + (i as f32 + 0.5) * self.scale;
             // let yc = geom.pos.1 + self.offset.1 + (j as f32 + 0.5) * self.scale;
@@ -453,22 +463,26 @@ impl Patcher {
                 let xsc = self.offset.0 + (i as f32 + 0.5) * self.scale;
                 let ysc = self.offset.1 + (j as f32 + 0.5) * self.scale;
                 let r = self.scale * 0.15;
-                ctx.stroke(line((xsc, ysc), (xc, yc)), &resources.wire_color, 1.5);
+                ctx.stroke(
+                    line((xsc, ysc), (xc, yc)),
+                    &self.resource.as_ref().unwrap().wire_color,
+                    1.5,
+                );
                 ctx.fill(
                     circle((xsc, ysc), r, 16),
-                    &resources.hover_ok,
+                    &self.resource.as_ref().unwrap().hover_ok,
                     // FillRule::NonZero,
                 );
             }
             ctx.fill(
                 circle((xc, yc), r, 16),
-                &resources.hover_ok,
+                &self.resource.as_ref().unwrap().hover_ok,
                 // FillRule::NonZero,
             );
         }
     }
 
-    fn paint_pads(&self, ctx: &mut PaintCtx, resources: &PaintResources) {
+    fn paint_pads(&self, ctx: &mut PaintCtx) {
         // let x0 = geom.pos.0 + self.offset.0 + (self.grid_size.0 as f32 - 0.5) * self.scale;
         // let y0 = geom.pos.1 + self.offset.1 + (self.grid_size.1 as f32 - 0.5) * self.scale;
         let x0 = self.offset.0 + (self.grid_size.0 as f32 - 0.5) * self.scale;
@@ -485,19 +499,24 @@ impl Patcher {
 
         ctx.stroke(
             line((x0, y0), (x0 + 0.6 * self.scale, y0)),
-            &resources.wire_color,
+            &self.resource.as_ref().unwrap().wire_color,
             3.0,
             // Some(&resources.rounded),
         );
     }
 
-    // TODO: could take text factory. Rethink lifetimes
-    // fn populate_text(&self, resources: &mut PaintResources, rc: &mut Piet) {
-    //     for inst in self.modules.iter() {
-    //         resources.add_text(&inst.spec.name, rc);
-    //     }
-    //     resources.add_text("\u{1F50A}", rc);
-    // }
+    fn populate_text(&mut self, ctx: &mut PaintCtx) {
+        if self.resource.is_none() {
+            return;
+        }
+        for inst in self.modules.iter() {
+            self.resource
+                .as_mut()
+                .unwrap()
+                .add_text(&inst.spec.name, ctx);
+        }
+        self.resource.as_mut().unwrap().add_text("\u{1F50A}", ctx);
+    }
 
     fn xy_to_cell(&self, x: f32, y: f32) -> Option<(u16, u16)> {
         let u = (x - self.offset.0) / self.scale;

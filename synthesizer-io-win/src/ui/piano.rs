@@ -64,7 +64,9 @@ impl<T: Data> Widget<T> for Piano {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut T, env: &Env) {
         match event {
             Event::MouseMove(event) => {
-                if !self.dragging { return };
+                if !self.dragging {
+                    return;
+                };
                 let u = event.pos.x / ctx.size().width;
                 let v = event.pos.y / ctx.size().height;
                 let mut cur_note = None;
@@ -85,8 +87,8 @@ impl<T: Data> Widget<T> for Piano {
                         }));
                         ctx.request_paint();
                     }
+                    self.handle_mouse(ctx, event);
                 }
-                self.handle_mouse(ctx, event);
             }
             Event::MouseDown(event) => {
                 self.handle_mouse(ctx, event);

@@ -45,7 +45,6 @@ impl<T: Data> Widget<T> for Scope {
                 }
             }
             Event::AnimFrame(_interval) => {
-                ctx.request_paint();
                 ctx.submit_command(POLL);
                 ctx.request_anim_frame();
             }
