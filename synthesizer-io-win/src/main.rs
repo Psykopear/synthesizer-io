@@ -18,22 +18,19 @@ mod grid;
 mod synth;
 mod ui;
 
-use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-// use cpal::{EventLoop, StreamData, UnknownTypeOutputBuffer};
-use druid::widget::{Button, Flex, Label, Widget, WidgetExt};
+use druid::widget::{Button, Flex, Label, Widget};
 use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Handled, Target, WindowDesc};
-use midir::{MidiInput, MidiInputConnection, MidiInputPort};
+use midir::{MidiInput, MidiInputConnection};
 use synth::{SynthState, NOTE, PATCH, POLL};
 use synthesizer_io_core::engine::Engine;
 use synthesizer_io_core::graph::Node;
 use synthesizer_io_core::module::N_SAMPLES_PER_CHUNK;
 use synthesizer_io_core::modules;
 use synthesizer_io_core::worker::Worker;
-use ui::{Patcher, Piano, Scope, JUMPER_MODE, MODULE, WIRE_MODE, SAMPLES};
+use ui::{Patcher, Piano, Scope, JUMPER_MODE, MODULE, SAMPLES, WIRE_MODE};
 
 struct Delegate {}
 
@@ -103,7 +100,7 @@ fn build_ui() -> impl Widget<SynthState> {
         .with_flex_child(piano, 1.0)
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (mut worker, tx, rx) = Worker::create(1024);
     // TODO: get sample rate from cpal
     let mut engine = Engine::new(48_000.0, rx, tx);
@@ -121,11 +118,13 @@ fn main() {
     let window = WindowDesc::new(build_ui()).title("Synthesizer IO");
     let launcher = AppLauncher::with_window(window).delegate(Delegate {});
     let _midi_connection = setup_midi(engine); // keep from being dropped
-    thread::spawn(move || run_cpal(worker));
+    let stream = run_cpal(worker);
+    stream.play()?;
     launcher
         .log_to_console()
         .launch(synth_state)
         .expect("launch failed");
+    Ok(())
 }
 
 fn setup_midi(engine: Arc<Mutex<Engine>>) -> Option<MidiInputConnection<()>> {
@@ -158,7 +157,7 @@ fn setup_midi(engine: Arc<Mutex<Engine>>) -> Option<MidiInputConnection<()>> {
     result.ok()
 }
 
-fn run_cpal(worker: Worker) {
+fn run_cpal(worker: Worker) -> cpal::Stream {
     let host = cpal::default_host();
     let device = host.default_output_device().unwrap();
     let config = device.default_output_config().unwrap();
@@ -166,14 +165,14 @@ fn run_cpal(worker: Worker) {
         cpal::SampleFormat::F32 => run::<f32>(&device, &config.into(), worker).unwrap(),
         cpal::SampleFormat::I16 => run::<i16>(&device, &config.into(), worker).unwrap(),
         cpal::SampleFormat::U16 => run::<u16>(&device, &config.into(), worker).unwrap(),
-    };
+    }
 }
 
 pub fn run<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     mut worker: Worker,
-) -> Result<(), Box<dyn std::error::Error>>
+) -> Result<cpal::Stream, Box<dyn std::error::Error>>
 where
     T: cpal::Sample,
 {
@@ -210,6 +209,5 @@ where
         },
         err_fn,
     )?;
-    stream.play()?;
-    loop {}
+    Ok(stream)
 }

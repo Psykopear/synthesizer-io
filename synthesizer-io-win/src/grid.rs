@@ -13,8 +13,8 @@
 // limitations under the License.
 
 //! Datatypes representing the model of a patching grid.
+use druid::im::{HashSet, Vector};
 use druid::Data;
-use druid::im::{Vector, HashSet};
 
 #[derive(Default, Data, Clone)]
 pub struct WireGrid {
@@ -94,12 +94,10 @@ impl WireGrid {
         let coords = (delta.start.0, delta.start.1, delta.end.0, delta.end.1);
         if delta.val {
             self.jumpers.push_back(coords);
+        } else if let Some(pos) = self.jumpers.iter().position(|&c| c == coords) {
+            self.jumpers.remove(pos);
         } else {
-            if let Some(pos) = self.jumpers.iter().position(|&c| c == coords) {
-                self.jumpers.remove(pos);
-            } else {
-                println!("trying to delete nonexistent jumper");
-            }
+            println!("trying to delete nonexistent jumper");
         }
     }
 

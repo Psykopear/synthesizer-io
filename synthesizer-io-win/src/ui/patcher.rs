@@ -51,13 +51,6 @@ pub struct Patcher {
     resource: Option<PaintResources>,
 }
 
-#[derive(Debug)]
-pub enum PatcherAction {
-    WireMode,
-    JumperMode,
-    Module(String),
-}
-
 pub const WIRE_MODE: Selector = Selector::new("synthesizer-io.patcher.wire-mode");
 pub const JUMPER_MODE: Selector = Selector::new("synthesizer-io.patcher.jumper-mode");
 pub const MODULE: Selector<String> = Selector::new("synthesizer-io.patcher.module");
@@ -73,11 +66,11 @@ struct PaintResources {
     grid_color: Brush,
     wire_color: Brush,
     jumper_color: Brush,
-    text_color: Brush,
+    // text_color: Brush,
     hover_ok: Brush,
     hover_bad: Brush,
     module_color: Brush,
-    rounded: StrokeStyle,
+    // rounded: StrokeStyle,
     text: HashMap<String, TextLayout<ArcStr>>,
 }
 
@@ -88,7 +81,7 @@ impl PaintResources {
         let grid_color = ctx.solid_brush(Color::Rgba32(0x405070ff));
         let wire_color = ctx.solid_brush(Color::Rgba32(0x908060ff));
         let jumper_color = ctx.solid_brush(Color::Rgba32(0x800000ff));
-        let text_color = ctx.solid_brush(Color::Rgba32(0x303030ff));
+        // let text_color = ctx.solid_brush(Color::Rgba32(0x303030ff));
         let hover_ok = ctx.solid_brush(Color::Rgba32(0x00c000ff));
         let hover_bad = ctx.solid_brush(Color::Rgba32(0xc00000ff));
         let module_color = ctx.solid_brush(Color::Rgba32(0xc0c0c0ff));
@@ -96,16 +89,16 @@ impl PaintResources {
             grid_color,
             wire_color,
             jumper_color,
-            text_color,
+            // text_color,
             hover_ok,
             hover_bad,
             module_color,
-            rounded,
+            // rounded,
             text: HashMap::new(),
         }
     }
 
-    fn add_text(&mut self, text: &str, ctx: &mut PaintCtx) {
+    fn add_text(&mut self, text: &str) {
         if !self.text.contains_key(text) {
             let layout = TextLayout::from_text(text);
             self.text.insert(text.to_string(), layout);
@@ -118,7 +111,7 @@ impl<T: Data> Widget<T> for Patcher {
         if self.resource.is_none() {
             self.resource = Some(PaintResources::create(ctx));
         }
-        self.populate_text(ctx);
+        self.populate_text();
         self.paint_wiregrid(ctx);
         self.paint_modules(ctx);
         self.paint_jumpers(ctx);
@@ -128,7 +121,7 @@ impl<T: Data> Widget<T> for Patcher {
         }
     }
 
-    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &T, env: &Env) {
+    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, _data: &T, _env: &Env) {
         match event {
             LifeCycle::HotChanged(false) => self.update_hover_lifecycle(None, ctx),
             _ => (),
@@ -139,20 +132,18 @@ impl<T: Data> Widget<T> for Patcher {
         bc.max()
     }
 
-    fn event(&mut self, ctx: &mut druid::EventCtx, event: &Event, data: &mut T, env: &Env) {
+    fn event(&mut self, ctx: &mut druid::EventCtx, event: &Event, _data: &mut T, _env: &Env) {
         match event {
             Event::MouseDown(event) => {
                 // Middle mouse button cycles through modes; might be obsolete
-                if event.button == MouseButton::Middle {
-                    if event.count > 0 {
-                        let new_mode = match self.mode {
-                            PatcherMode::Wire => PatcherMode::Module,
-                            PatcherMode::Module => PatcherMode::Jumper,
-                            PatcherMode::Jumper => PatcherMode::Wire,
-                        };
-                        self.mode = new_mode;
-                        self.update_hover(None, ctx);
-                    }
+                if event.button == MouseButton::Middle && event.count > 0 {
+                    let new_mode = match self.mode {
+                        PatcherMode::Wire => PatcherMode::Module,
+                        PatcherMode::Module => PatcherMode::Jumper,
+                        PatcherMode::Jumper => PatcherMode::Wire,
+                    };
+                    self.mode = new_mode;
+                    self.update_hover(None, ctx);
                 }
                 match self.mode {
                     PatcherMode::Wire => {
@@ -246,10 +237,10 @@ impl<T: Data> Widget<T> for Patcher {
                 }
             }
             Event::Command(cmd) => {
-                if let Some(_) = cmd.get(WIRE_MODE) {
+                if cmd.is(WIRE_MODE) {
                     self.mode = PatcherMode::Wire;
                 }
-                if let Some(_) = cmd.get(JUMPER_MODE) {
+                if cmd.is(JUMPER_MODE) {
                     self.mode = PatcherMode::Jumper;
                 }
                 if let Some(name) = cmd.get(MODULE) {
@@ -263,7 +254,7 @@ impl<T: Data> Widget<T> for Patcher {
         }
     }
 
-    fn update(&mut self, ctx: &mut druid::UpdateCtx, old_data: &T, data: &T, env: &Env) {}
+    fn update(&mut self, _ctx: &mut druid::UpdateCtx, _old_data: &T, _data: &T, _env: &Env) {}
 }
 
 impl Patcher {
@@ -505,17 +496,14 @@ impl Patcher {
         );
     }
 
-    fn populate_text(&mut self, ctx: &mut PaintCtx) {
+    fn populate_text(&mut self) {
         if self.resource.is_none() {
             return;
         }
         for inst in self.modules.iter() {
-            self.resource
-                .as_mut()
-                .unwrap()
-                .add_text(&inst.spec.name, ctx);
+            self.resource.as_mut().unwrap().add_text(&inst.spec.name);
         }
-        self.resource.as_mut().unwrap().add_text("\u{1F50A}", ctx);
+        self.resource.as_mut().unwrap().add_text("\u{1F50A}");
     }
 
     fn xy_to_cell(&self, x: f32, y: f32) -> Option<(u16, u16)> {
@@ -677,5 +665,5 @@ fn circle(center: (f32, f32), radius: f32, num_segments: usize) -> BezPath {
     }
 
     path.close_path();
-    return path;
+    path
 }

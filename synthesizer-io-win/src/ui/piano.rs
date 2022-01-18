@@ -61,7 +61,7 @@ const NOTE_POS: &[(u8, u8)] = &[
 const INSET: f32 = 2.0;
 
 impl<T: Data> Widget<T> for Piano {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut T, env: &Env) {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, _data: &mut T, _env: &Env) {
         match event {
             Event::MouseMove(event) => {
                 if !self.dragging {
@@ -111,10 +111,12 @@ impl<T: Data> Widget<T> for Piano {
             _ => (),
         }
     }
-    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &T, env: &Env) {}
-    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &T, data: &T, env: &Env) {}
 
-    fn paint(&mut self, ctx: &mut PaintCtx, data: &T, env: &Env) {
+    fn lifecycle(&mut self, _ctx: &mut LifeCycleCtx, _event: &LifeCycle, _data: &T, _env: &Env) {}
+
+    fn update(&mut self, _ctx: &mut UpdateCtx, _old_data: &T, _data: &T, _env: &Env) {}
+
+    fn paint(&mut self, ctx: &mut PaintCtx, _data: &T, _env: &Env) {
         let black = ctx.solid_brush(Color::Rgba32(0x080800ff));
         let white = ctx.solid_brush(Color::Rgba32(0xf0f0eaff));
         let active = ctx.solid_brush(Color::Rgba32(0x107010ff));
@@ -125,12 +127,10 @@ impl<T: Data> Widget<T> for Piano {
             let (u0, v0, u1, v1) = self.note_geom(note);
             let color = if self.pressed[note as usize] {
                 &active
+            } else if v0 == 0.0 {
+                &black
             } else {
-                if v0 == 0.0 {
-                    &black
-                } else {
-                    &white
-                }
+                &white
             };
             let x0 = x + u0 * ctx.size().width as f32 + INSET;
             let y0 = y + v0 * ctx.size().height as f32 + INSET;
@@ -141,7 +141,7 @@ impl<T: Data> Widget<T> for Piano {
         }
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints, data: &T, env: &Env) -> Size {
+    fn layout(&mut self, _ctx: &mut LayoutCtx, bc: &BoxConstraints, _data: &T, _env: &Env) -> Size {
         bc.max()
     }
 }

@@ -41,7 +41,7 @@ impl<T: Data> Widget<T> for Scope {
                     ctx.request_anim_frame();
                 }
                 if let Some(samples) = cmd.get(SAMPLES) {
-                    self.s.provide_samples(&samples);
+                    self.s.provide_samples(samples);
                 }
             }
             Event::AnimFrame(_interval) => {
@@ -94,19 +94,5 @@ impl Scope {
     pub fn new() -> Scope {
         let s = s::Scope::new(640, 480);
         Scope { s }
-    }
-
-    fn draw_test_pattern(&mut self) {
-        let mut xylast = None;
-        // sinewave!
-        for i in 0..1001 {
-            let h = (i as f32) * 0.001;
-            let x = 640.0 * h;
-            let y = 240.0 + 200.0 * (h * 50.0).sin();
-            if let Some((xlast, ylast)) = xylast {
-                self.s.add_line(xlast, ylast, x, y, 1.0, 2.0);
-            }
-            xylast = Some((x, y));
-        }
     }
 }

@@ -47,26 +47,9 @@ pub struct SynthState {
     uf: Arc<QuickUnionUf<UnionByRank>>,
 }
 
-#[derive(Clone)]
-pub enum Action {
-    Note(NoteEvent),
-    Patch(Vec<Delta>),
-    Poll(Vec<f32>),
-}
-
 pub const NOTE: Selector<NoteEvent> = Selector::new("synthesizer-io.synth.note");
 pub const PATCH: Selector<Vec<Delta>> = Selector::new("synthesizer-io.synth.patch");
 pub const POLL: Selector = Selector::new("synthesizer-io.synth.poll");
-// impl Widget for SynthState {
-//     fn poke(&mut self, payload: &mut Any, _ctx: &mut HandlerCtx) -> bool {
-//         if let Some(action) = payload.downcast_mut::<Action>() {
-//             self.action(action);
-//             true
-//         } else {
-//             false
-//         }
-//     }
-// }
 
 impl SynthState {
     pub fn new(engine: Arc<Mutex<Engine>>) -> SynthState {
@@ -77,21 +60,6 @@ impl SynthState {
             grid: Default::default(),
             modules: Default::default(),
             uf: Arc::new(QuickUnionUf::new(0)),
-        }
-    }
-
-    fn action(&mut self, action: &mut Action) {
-        match *action {
-            Action::Note(ref note_event) => {
-                let mut engine = self.engine.lock().unwrap();
-                engine.dispatch_note_event(note_event);
-            }
-            Action::Patch(ref delta) => self.apply_patch_delta(delta),
-            Action::Poll(ref mut samples) => {
-                let mut engine = self.engine.lock().unwrap();
-                let _n_msg = engine.poll_rx();
-                *samples = engine.poll_monitor();
-            }
         }
     }
 
