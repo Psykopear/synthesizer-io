@@ -37,7 +37,7 @@ impl<T: Data> Widget<T> for Scope {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, _data: &mut T, _env: &Env) {
         match event {
             Event::Command(cmd) => {
-                if let Some(_) = cmd.get(START) {
+                if cmd.is(START) {
                     ctx.request_anim_frame();
                 }
                 if let Some(samples) = cmd.get(SAMPLES) {
@@ -45,12 +45,14 @@ impl<T: Data> Widget<T> for Scope {
                 }
             }
             Event::AnimFrame(_interval) => {
-                ctx.submit_command(POLL);
                 ctx.request_paint();
+                ctx.submit_command(POLL);
                 ctx.request_anim_frame();
             }
             _ => (),
         }
+        ctx.request_paint();
+        ctx.request_layout();
     }
 
     fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, _data: &T, _env: &Env) {

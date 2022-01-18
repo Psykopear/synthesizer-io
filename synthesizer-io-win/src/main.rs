@@ -55,8 +55,9 @@ impl AppDelegate<SynthState> for Delegate {
             data.apply_patch_delta(delta);
             return Handled::Yes;
         }
-        if let Some(_) = cmd.get(POLL) {
+        if cmd.is(POLL) {
             let mut engine = data.engine.lock().unwrap();
+            let _n_msg = engine.poll_rx();
             ctx.submit_command(SAMPLES.with(engine.poll_monitor()));
             return Handled::Yes;
         }
