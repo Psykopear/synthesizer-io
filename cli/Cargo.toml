@@ -4,4 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+cpal = "0.13.4"
+midir = "0.7.0"
+time = "0.1"
+
 core = { path = "../core" }

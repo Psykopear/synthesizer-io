@@ -14,18 +14,14 @@
 
 //! A lock-free queue suitable for real-time audio threads.
 
-use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::ptr;
 use std::ptr::NonNull;
 use std::sync::atomic::Ordering::{Relaxed, Release};
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::Arc;
-use std::thread;
-use std::time;
 
 // The implementation is a fairly straightforward Treiber stack.
-
 struct Node<T> {
     payload: T,
     child: Option<NonNull<Node<T>>>,
@@ -62,7 +58,7 @@ impl<T> Item<T> {
     /// very similar to `Box::new()`.
     pub fn make_item(payload: T) -> Item<T> {
         let ptr = Box::into_raw(Box::new(Node {
-            payload: payload,
+            payload,
             child: None,
         }));
         // TODO: use Box::into_raw_non_null when it stabilizes
@@ -120,8 +116,6 @@ unsafe impl<T: Sync> Sync for Sender<T> {}
 /// The sender endpoint for a lock-free queue.
 pub struct Sender<T> {
     queue: Arc<Queue<T>>,
-    // TODO: is this phantom data necessary?
-    _marker: PhantomData<*const T>,
 }
 
 unsafe impl<T: Send> Send for Receiver<T> {}
@@ -130,14 +124,12 @@ unsafe impl<T: Send> Send for Receiver<T> {}
 /// The receiver endpoint for a lock-free queue.
 pub struct Receiver<T> {
     queue: Arc<Queue<T>>,
-    _marker: PhantomData<*const T>,
 }
 
 impl<T: Send + 'static> Clone for Sender<T> {
     fn clone(&self) -> Sender<T> {
         Sender {
             queue: self.queue.clone(),
-            _marker: Default::default(),
         }
     }
 }
@@ -180,12 +172,8 @@ impl<T: Send + 'static> Queue<T> {
         (
             Sender {
                 queue: queue.clone(),
-                _marker: Default::default(),
             },
-            Receiver {
-                queue: queue,
-                _marker: Default::default(),
-            },
+            Receiver { queue },
         )
     }
 
@@ -262,61 +250,4 @@ impl<T: Send + 'static> Drop for QueueMoveIter<T> {
     fn drop(&mut self) {
         self.all(|_| true);
     }
-}
-
-// Use case code below, to be worked in a separate module. Would also be
-// a good basis for a test.
-
-struct Worker {
-    to_worker: Receiver<String>,
-    from_worker: Sender<String>,
-}
-
-impl Worker {
-    fn work(&mut self) {
-        let mut things = Vec::new();
-
-        let start = time::Instant::now();
-        loop {
-            for node in self.to_worker.recv_items() {
-                things.push(node);
-            }
-            if things.len() >= 1000 {
-                break;
-            }
-            thread::sleep(time::Duration::new(0, 5000));
-        }
-        let elapsed = start.elapsed();
-        for thing in things {
-            self.from_worker.send_item(thing);
-        }
-        println!("#total time: {:?}", elapsed);
-    }
-}
-
-pub fn try_queue() {
-    let (tx, to_worker) = Queue::new();
-    let (from_worker, rx) = Queue::new();
-    let mut worker = Worker {
-        to_worker: to_worker,
-        from_worker: from_worker,
-    };
-    let child = thread::spawn(move || worker.work());
-    thread::sleep(time::Duration::from_millis(1));
-    for i in 0..1000 {
-        tx.send(i.to_string());
-        //thread::sleep(time::Duration::new(0, 1000));
-    }
-    let mut n_recv = 0;
-    loop {
-        for s in rx.recv() {
-            println!("{}", s);
-            n_recv += 1;
-        }
-        if n_recv == 1000 {
-            break;
-        }
-    }
-    let _ = child.join();
-    //println!("done");
 }

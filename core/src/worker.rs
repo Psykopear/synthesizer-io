@@ -35,9 +35,9 @@ impl Worker {
         let (from_worker, rx) = Queue::new();
         let graph = Graph::new(max_size);
         let worker = Worker {
-            to_worker: to_worker,
-            from_worker: from_worker,
-            graph: graph,
+            to_worker,
+            from_worker,
+            graph,
             root: 0,
         };
         (worker, tx, rx)

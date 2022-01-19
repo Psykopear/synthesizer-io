@@ -11,13 +11,15 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-use midir::MidiInput;
 
 use core::graph::{Message, Node, Note, SetParam};
 use core::module::N_SAMPLES_PER_CHUNK;
 use core::modules;
 use core::queue::Sender;
 use core::worker::Worker;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use midir::{MidiInput, MidiInputConnection};
+use std::io::Write;
 
 struct Midi {
     tx: Sender<Message>,
@@ -26,10 +28,7 @@ struct Midi {
 
 impl Midi {
     fn new(tx: Sender<Message>) -> Midi {
-        Midi {
-            tx: tx,
-            cur_note: None,
-        }
+        Midi { tx, cur_note: None }
     }
 
     fn send(&self, msg: Message) {
@@ -37,11 +36,11 @@ impl Midi {
     }
 
     fn set_ctrl_const(&mut self, value: u8, lo: f32, hi: f32, ix: usize, ts: u64) {
-        let value = lo + value as f32 * (1.0 / 127.0) * (hi - lo);
+        let val = lo + value as f32 * (1.0 / 127.0) * (hi - lo);
         let param = SetParam {
-            ix: ix,
+            ix,
             param_ix: 0,
-            val: value,
+            val,
             timestamp: ts,
         };
         self.send(Message::SetParam(param));
@@ -50,9 +49,9 @@ impl Midi {
     fn send_note(&mut self, ixs: Vec<usize>, midi_num: f32, velocity: f32, on: bool, ts: u64) {
         let note = Note {
             ixs: ixs.into_boxed_slice(),
-            midi_num: midi_num,
-            velocity: velocity,
-            on: on,
+            midi_num,
+            velocity,
+            on,
             timestamp: ts,
         };
         self.send(Message::Note(note));
@@ -68,7 +67,6 @@ impl Midi {
                     1 => self.set_ctrl_const(value, 0.0, 22_000f32.log2(), 3, ts),
                     2 => self.set_ctrl_const(value, 0.0, 0.995, 4, ts),
                     3 => self.set_ctrl_const(value, 0.0, 22_000f32.log2(), 5, ts),
-
                     5 => self.set_ctrl_const(value, 0.0, 10.0, 11, ts),
                     6 => self.set_ctrl_const(value, 0.0, 10.0, 12, ts),
                     7 => self.set_ctrl_const(value, 0.0, 6.0, 13, ts),
@@ -92,21 +90,8 @@ impl Midi {
     }
 }
 
-fn main() {
-    let (mut worker, tx, rx) = Worker::create(1024);
-
-    /*
-    let module = Box::new(modules::ConstCtrl::new(440.0f32.log2()));
-    worker.handle_node(Node::create(module, 1, [], []));
-    let module = Box::new(modules::Sin::new(44_100.0));
-    worker.handle_node(Node::create(module, 2, [], [(1, 0)]));
-    let module = Box::new(modules::ConstCtrl::new(880.0f32.log2()));
-    worker.handle_node(Node::create(module, 3, [], []));
-    let module = Box::new(modules::Sin::new(44_100.0));
-    worker.handle_node(Node::create(module, 4, [], [(3, 0)]));
-    let module = Box::new(modules::Sum);
-    worker.handle_node(Node::create(module, 0, [(2, 0), (4, 0)], []));
-    */
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut worker, tx, _rx) = Worker::create(1024);
 
     let module = Box::new(modules::Saw::new(44_100.0));
     worker.handle_node(Node::create(module, 1, [], [(5, 0)]));
@@ -119,12 +104,7 @@ fn main() {
     let module = Box::new(modules::Biquad::new(44_100.0));
     worker.handle_node(Node::create(module, 6, [(1, 0)], [(3, 0), (4, 0)]));
     let module = Box::new(modules::Adsr::new());
-    worker.handle_node(Node::create(
-        module,
-        7,
-        [],
-        vec![(11, 0), (12, 0), (13, 0), (14, 0)],
-    ));
+    worker.handle_node(Node::create(module, 7, [], vec![(11, 0), (12, 0), (13, 0), (14, 0)],));
     let module = Box::new(modules::Gain::new());
     worker.handle_node(Node::create(module, 0, [(6, 0)], [(7, 0)]));
 
@@ -137,148 +117,110 @@ fn main() {
     let module = Box::new(modules::SmoothCtrl::new(5.0));
     worker.handle_node(Node::create(module, 14, [], []));
 
-    #[cfg(target_os = "macos")]
-    run_mac(worker, tx);
-
-    #[cfg(not(target_os = "macos"))]
-    run_cpal(worker, tx);
+    let _midi_connection = setup_midi(tx); // keep from being dropped
+    let stream = run_cpal(worker);
+    stream.play()?;
+    print!("Press Enter to stop the synth...");
+    std::io::stdout().flush().unwrap();
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).unwrap();
+    Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
-fn run_cpal(mut worker: Worker, tx: Sender<Message>) {
-    let event_loop = EventLoop::new();
-    let device = cpal::default_output_device().expect("no output device");
-    let mut supported_formats_range = device
-        .supported_output_formats()
-        .expect("error while querying formats");
-    let format = supported_formats_range
-        .next()
-        .expect("no supported format?!")
-        .with_max_sample_rate();
-    println!("format: {:?}", format);
-    let stream_id = event_loop.build_output_stream(&device, &format).unwrap();
-    event_loop.play_stream(stream_id);
-
-    // midi setup
+fn setup_midi(tx: Sender<Message>) -> Option<MidiInputConnection<()>> {
     let mut midi = Midi::new(tx);
-
     let mut midi_in = MidiInput::new("midir input").expect("can't create midi input");
-    midi_in.ignore(::midir::Ignore::None);
+    midi_in.ignore(midir::Ignore::None);
+    let in_ports = midi_in.ports();
+    let in_port = match in_ports.len() {
+        0 => return None,
+        1 => {
+            println!(
+                "Choosing the only available input port: {}",
+                midi_in.port_name(&in_ports[0]).unwrap()
+            );
+            &in_ports[0]
+        }
+        _ => {
+            println!("\nAvailable input ports:");
+            for (i, p) in in_ports.iter().enumerate() {
+                println!("{}: {}", i, midi_in.port_name(p).unwrap());
+            }
+            print!("Please select input port: ");
+            std::io::stdout().flush().unwrap();
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input).unwrap();
+            in_ports
+                .get(input.trim().parse::<usize>().unwrap())
+                .ok_or("invalid input port selected")
+                .unwrap()
+        }
+    };
     let result = midi_in.connect(
-        0,
+        in_port,
         "in",
         move |ts, data, _| {
-            //println!("{}, {:?}", ts, data);
             midi.dispatch_midi(data, ts);
         },
         (),
     );
-    if let Err(e) = result {
+    if let Err(ref e) = result {
         println!("error connecting to midi: {:?}", e);
     }
-
-    event_loop.run(move |_stream_id, stream_data| {
-        match stream_data {
-            StreamData::Output {
-                buffer: UnknownTypeOutputBuffer::F32(mut buf),
-            } => {
-                let mut buf_slice = buf.deref_mut();
-                let mut i = 0;
-                let mut timestamp = time::precise_time_ns();
-                while i < buf_slice.len() {
-                    // should let the graph generate stereo
-                    let buf = worker.work(timestamp)[0].get();
-                    for j in 0..N_SAMPLES_PER_CHUNK {
-                        buf_slice[i + j * 2] = buf[j];
-                        buf_slice[i + j * 2 + 1] = buf[j];
-                    }
-
-                    // TODO: calculate properly, magic value is 64 * 1e9 / 44_100
-                    timestamp += 1451247 * (N_SAMPLES_PER_CHUNK as u64) / 64;
-                    i += N_SAMPLES_PER_CHUNK * 2;
-                }
-            }
-            _ => panic!("Can't handle output buffer format"),
-        }
-    });
+    result.ok()
 }
 
-#[cfg(target_os = "macos")]
-fn run_mac(worker: Worker, tx: Sender<Message>) {
-    let _audio_unit = run_audio_unit(worker).unwrap();
-
-    let source_index = 0;
-    if let Some(source) = coremidi::Source::from_index(source_index) {
-        println!("Listening for midi from {}", source.display_name().unwrap());
-        let client = coremidi::Client::new("synthesizer-client").unwrap();
-        let mut last_ts = 0;
-        let mut last_val = 0;
-        let mut midi = Midi::new(tx);
-        let callback = move |packet_list: &coremidi::PacketList| {
-            for packet in packet_list.iter() {
-                let data = packet.data();
-                let delta_t = packet.timestamp() - last_ts;
-                let speed = 1e9 * (data[2] as f64 - last_val as f64) / delta_t as f64;
-                println!(
-                    "{} {:3.3} {} {}",
-                    speed,
-                    delta_t as f64 * 1e-6,
-                    data[2],
-                    time::precise_time_ns() - packet.timestamp()
-                );
-                last_val = data[2];
-                last_ts = packet.timestamp();
-                midi.dispatch_midi(&data, last_ts);
-            }
-        };
-        let input_port = client.input_port("synthesizer-port", callback).unwrap();
-        input_port.connect_source(&source).unwrap();
-
-        println!("Press Enter to exit.");
-        let mut line = String::new();
-        ::std::io::stdin().read_line(&mut line).unwrap();
-        input_port.disconnect_source(&source).unwrap();
-    } else {
-        println!("No midi available");
+fn run_cpal(worker: Worker) -> cpal::Stream {
+    let host = cpal::default_host();
+    let device = host.default_output_device().unwrap();
+    let config = device.default_output_config().unwrap();
+    match config.sample_format() {
+        cpal::SampleFormat::F32 => run::<f32>(&device, &config.into(), worker).unwrap(),
+        cpal::SampleFormat::I16 => run::<i16>(&device, &config.into(), worker).unwrap(),
+        cpal::SampleFormat::U16 => run::<u16>(&device, &config.into(), worker).unwrap(),
     }
 }
 
-#[cfg(target_os = "macos")]
-fn run_audio_unit(mut worker: Worker) -> Result<AudioUnit, coreaudio::Error> {
-    // Construct an Output audio unit that delivers audio to the default output device.
-    let mut audio_unit = AudioUnit::new(IOType::DefaultOutput)?;
+pub fn run<T>(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    mut worker: Worker,
+) -> Result<cpal::Stream, Box<dyn std::error::Error>>
+where
+    T: cpal::Sample,
+{
+    // let sample_rate = config.sample_rate.0 as f32;
+    // let channels = config.channels as usize;
+    let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
 
-    let stream_format = audio_unit.stream_format(Scope::Output)?;
-    //println!("{:#?}", &stream_format);
-
-    // We expect `f32` data.
-    assert!(SampleFormat::F32 == stream_format.sample_format);
-
-    type Args = render_callback::Args<data::NonInterleaved<f32>>;
-    audio_unit.set_render_callback(move |args| {
-        let Args {
-            num_frames,
-            mut data,
-            ..
-        }: Args = args;
-        assert!(num_frames % N_SAMPLES_PER_CHUNK == 0);
-        let mut i = 0;
-        let mut timestamp = time::precise_time_ns();
-        while i < num_frames {
-            // should let the graph generate stereo
-            let buf = worker.work(timestamp)[0].get();
-            for j in 0..N_SAMPLES_PER_CHUNK {
-                for channel in data.channels_mut() {
-                    channel[i + j] = buf[j];
+    let stream = device.build_output_stream(
+        config,
+        move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+            let mut i = 0;
+            let mut timestamp = time::precise_time_ns();
+            while i < data.len() {
+                // should let the graph generate stereo
+                let buf = worker.work(timestamp)[0].get();
+                for j in 0..N_SAMPLES_PER_CHUNK {
+                    // TODO: This check wasn't needed in the original version.
+                    // data.len() can change, and is not necessarily a multiple
+                    // of N_SAMPLES_PER_CHUNK * 2, so at some point I have a chunk
+                    // of data and not enough space left inside `data`.
+                    // What should I do there? For now I leave the rest of the
+                    // buffer as it is, but we lose at most one chunk of data.
+                    if data.len() > (i + j * 2 + 1) {
+                        let value: T = cpal::Sample::from::<f32>(&buf[j]);
+                        data[i + j * 2] = value;
+                        data[i + j * 2 + 1] = value;
+                    }
                 }
-            }
-            // TODO: calculate properly, magic value is 64 * 1e9 / 44_100
-            timestamp += 1451247 * (N_SAMPLES_PER_CHUNK as u64) / 64;
-            i += N_SAMPLES_PER_CHUNK;
-        }
-        Ok(())
-    })?;
-    audio_unit.start()?;
 
-    Ok(audio_unit)
+                // TODO: calculate properly, magic value is 64 * 1e9 / 44_100
+                timestamp += 1451247 * (N_SAMPLES_PER_CHUNK as u64) / 64;
+                i += N_SAMPLES_PER_CHUNK * 2;
+            }
+        },
+        err_fn,
+    )?;
+    Ok(stream)
 }
