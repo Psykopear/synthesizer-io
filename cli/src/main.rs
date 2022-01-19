@@ -11,40 +11,13 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-#[cfg(target_os = "macos")]
-extern crate coreaudio;
-#[cfg(target_os = "macos")]
-extern crate coremidi;
-
-#[cfg(not(target_os = "macos"))]
-extern crate cpal;
-#[cfg(not(target_os = "macos"))]
-extern crate midir;
-
-extern crate time;
-
-extern crate synthesizer_io_core;
-
-#[cfg(target_os = "macos")]
-use coreaudio::audio_unit::render_callback::{self, data};
-#[cfg(target_os = "macos")]
-use coreaudio::audio_unit::{AudioUnit, IOType, SampleFormat, Scope};
-
-#[cfg(not(target_os = "macos"))]
-use cpal::{EventLoop, StreamData, UnknownTypeOutputBuffer};
-
-#[cfg(not(target_os = "macos"))]
 use midir::MidiInput;
-#[cfg(not(target_os = "macos"))]
-use std::ops::DerefMut;
 
-use synthesizer_io_core::modules;
-
-use synthesizer_io_core::graph::{Message, Node, Note, SetParam};
-use synthesizer_io_core::module::N_SAMPLES_PER_CHUNK;
-use synthesizer_io_core::queue::Sender;
-use synthesizer_io_core::worker::Worker;
+use core::graph::{Message, Node, Note, SetParam};
+use core::module::N_SAMPLES_PER_CHUNK;
+use core::modules;
+use core::queue::Sender;
+use core::worker::Worker;
 
 struct Midi {
     tx: Sender<Message>,
@@ -120,7 +93,7 @@ impl Midi {
 }
 
 fn main() {
-    let (mut worker, tx, _rx) = Worker::create(1024);
+    let (mut worker, tx, rx) = Worker::create(1024);
 
     /*
     let module = Box::new(modules::ConstCtrl::new(440.0f32.log2()));

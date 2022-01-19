@@ -30,7 +30,7 @@ use druid::MouseEvent;
 use druid::Size;
 use druid::UpdateCtx;
 use druid::{LayoutCtx, PaintCtx};
-use synthesizer_io_core::engine::NoteEvent;
+use core::engine::NoteEvent;
 
 pub struct Piano {
     start_note: u8,

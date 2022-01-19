@@ -1,7 +1,7 @@
 [package]
-name = "synthesize-scope"
+name = "scope"
 version = "0.1.0"
-authors = ["Raph Levien <raph.levien@gmail.com>"]
+authors = ["Raph Levien <raph.levien@gmail.com>", "Federico Dolce <hello@docler.me>"]
 license = "Apache-2.0"
 description = "Oscilloscope style waveform visualization"
 edition = "2021"

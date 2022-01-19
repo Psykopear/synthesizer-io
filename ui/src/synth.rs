@@ -17,7 +17,7 @@ use crate::grid::{Delta, ModuleGrid, ModuleInstance, WireDelta, WireGrid};
 use druid::im::HashMap;
 use druid::{Data, Selector};
 use std::sync::{Arc, Mutex};
-use synthesizer_io_core::engine::{Engine, ModuleType, NoteEvent};
+use core::engine::{Engine, ModuleType, NoteEvent};
 use union_find::{QuickUnionUf, UnionByRank, UnionFind};
 
 /// Synthesizer engine state.

@@ -25,11 +25,11 @@ use druid::widget::{Button, Flex, Label, Widget};
 use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Handled, Target, WindowDesc};
 use midir::{MidiInput, MidiInputConnection};
 use synth::{SynthState, NOTE, PATCH, POLL};
-use synthesizer_io_core::engine::Engine;
-use synthesizer_io_core::graph::Node;
-use synthesizer_io_core::module::N_SAMPLES_PER_CHUNK;
-use synthesizer_io_core::modules;
-use synthesizer_io_core::worker::Worker;
+use core::engine::Engine;
+use core::graph::Node;
+use core::module::N_SAMPLES_PER_CHUNK;
+use core::modules;
+use core::worker::Worker;
 use ui::{Patcher, Piano, Scope, JUMPER_MODE, MODULE, SAMPLES, WIRE_MODE};
 
 struct Delegate {}

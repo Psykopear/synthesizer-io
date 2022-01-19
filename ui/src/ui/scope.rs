@@ -20,7 +20,7 @@ use druid::{
     Selector, Size, UpdateCtx, Widget,
 };
 
-use synthesize_scope as s;
+use scope as s;
 
 use crate::synth::POLL;
 

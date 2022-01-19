@@ -1,0 +1,17 @@
+[package]
+name = "ui"
+version = "0.1.0"
+authors = ["Raph Levien <raph.levien@gmail.com>", "Federico Dolce <hello@docler.me>"]
+license = "Apache 2.0"
+description = "Modular synth"
+edition = "2021"
+
+[dependencies]
+time = "0.1"
+itertools = "0.7.8"
+union-find = "0.3.2"
+cpal = "0.13.4"
+midir = "0.7.0"
+druid = { git = "https://github.com/linebender/druid", features=["im"] }
+core = { path = "../core" }
+scope = { path = "../scope" }
