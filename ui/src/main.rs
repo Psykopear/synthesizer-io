@@ -19,7 +19,6 @@ mod synth;
 mod ui;
 
 use std::sync::{Arc, Mutex};
-
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use druid::widget::{Button, Flex, Label, Widget};
 use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Handled, Target, WindowDesc};
@@ -189,12 +188,7 @@ where
                 // should let the graph generate stereo
                 let buf = worker.work(timestamp)[0].get();
                 for j in 0..N_SAMPLES_PER_CHUNK {
-                    // TODO: This check wasn't needed in the original version.
-                    // data.len() can change, and is not necessarily a multiple
-                    // of N_SAMPLES_PER_CHUNK * 2, so at some point I have a chunk
-                    // of data and not enough space left inside `data`.
-                    // What should I do there? For now I leave the rest of the
-                    // buffer as it is, but we lose at most one chunk of data.
+                    // TODO: Use fixed sized buffer and avoid this check
                     if data.len() > (i + j * 2 + 1) {
                         let value: T = cpal::Sample::from::<f32>(&buf[j]);
                         data[i + j * 2] = value;

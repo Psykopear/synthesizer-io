@@ -86,6 +86,10 @@ impl Saw {
             phase: 0.0,
         }
     }
+
+    pub fn boxed(sample_rate: f32) -> Box<Saw> {
+        Box::new(Self::new(sample_rate))
+    }
 }
 
 fn compute(tab_ix: usize, phasefrac: f32) -> f32 {

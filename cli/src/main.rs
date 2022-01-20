@@ -14,7 +14,7 @@
 
 use core::graph::{Message, Node, Note, SetParam};
 use core::module::N_SAMPLES_PER_CHUNK;
-use core::modules;
+use core::modules as m;
 use core::queue::Sender;
 use core::worker::Worker;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -92,30 +92,38 @@ impl Midi {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (mut worker, tx, _rx) = Worker::create(1024);
+    const PITCH: usize = 5;
+    const GAIN: usize = 0;
 
-    let module = Box::new(modules::Saw::new(44_100.0));
-    worker.handle_node(Node::create(module, 1, [], [(5, 0)]));
-    let module = Box::new(modules::SmoothCtrl::new(880.0f32.log2()));
-    worker.handle_node(Node::create(module, 3, [], []));
-    let module = Box::new(modules::SmoothCtrl::new(0.5));
-    worker.handle_node(Node::create(module, 4, [], []));
-    let module = Box::new(modules::NotePitch::new());
-    worker.handle_node(Node::create(module, 5, [], []));
-    let module = Box::new(modules::Biquad::new(44_100.0));
-    worker.handle_node(Node::create(module, 6, [(1, 0)], [(3, 0), (4, 0)]));
-    let module = Box::new(modules::Adsr::new());
-    worker.handle_node(Node::create(module, 7, [], vec![(11, 0), (12, 0), (13, 0), (14, 0)],));
-    let module = Box::new(modules::Gain::new());
-    worker.handle_node(Node::create(module, 0, [(6, 0)], [(7, 0)]));
+    let saw = m::Saw::boxed(44_100.0);
+    worker.handle_node(Node::create(saw, 1, [], [(PITCH, GAIN)]));
 
-    let module = Box::new(modules::SmoothCtrl::new(5.0));
-    worker.handle_node(Node::create(module, 11, [], []));
-    let module = Box::new(modules::SmoothCtrl::new(5.0));
-    worker.handle_node(Node::create(module, 12, [], []));
-    let module = Box::new(modules::SmoothCtrl::new(4.0));
-    worker.handle_node(Node::create(module, 13, [], []));
-    let module = Box::new(modules::SmoothCtrl::new(5.0));
-    worker.handle_node(Node::create(module, 14, [], []));
+    let ctrl = Box::new(m::SmoothCtrl::new(880.0f32.log2()));
+    worker.handle_node(Node::create(ctrl, 3, [], []));
+
+    let ctrl = Box::new(m::SmoothCtrl::new(0.5));
+    worker.handle_node(Node::create(ctrl, 4, [], []));
+
+    let pitch = Box::new(m::NotePitch::new());
+    worker.handle_node(Node::create(pitch, 5, [], []));
+
+    let biquad = Box::new(m::Biquad::new(44_100.0));
+    worker.handle_node(Node::create(biquad, 6, [(1, 0)], [(3, 0), (4, 0)]));
+
+    let adsr = Box::new(m::Adsr::new());
+    worker.handle_node(Node::create(adsr, 7, [], vec![(11, 0), (12, 0), (13, 0), (14, 0)],));
+
+    let gain = Box::new(m::Gain::new());
+    worker.handle_node(Node::create(gain, 0, [(6, 0)], [(7, 0)]));
+
+    let a = Box::new(m::SmoothCtrl::new(5.0));
+    worker.handle_node(Node::create(a, 11, [], []));
+    let d = Box::new(m::SmoothCtrl::new(5.0));
+    worker.handle_node(Node::create(d, 12, [], []));
+    let s = Box::new(m::SmoothCtrl::new(4.0));
+    worker.handle_node(Node::create(s, 13, [], []));
+    let r = Box::new(m::SmoothCtrl::new(5.0));
+    worker.handle_node(Node::create(r, 14, [], []));
 
     let _midi_connection = setup_midi(tx); // keep from being dropped
     let stream = run_cpal(worker);

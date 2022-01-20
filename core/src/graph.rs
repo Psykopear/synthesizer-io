@@ -161,12 +161,12 @@ impl Node {
         let out_bufs = out_bufs.into_boxed_slice();
         let out_ctrl = vec![0.0; module.n_ctrl_out()].into_boxed_slice();
         Node {
-            ix: ix,
-            module: module,
+            ix,
+            module,
             in_buf_wiring: in_buf_wiring.into_box(),
             in_ctrl_wiring: in_ctrl_wiring.into_box(),
-            out_bufs: out_bufs,
-            out_ctrl: out_ctrl,
+            out_bufs,
+            out_ctrl,
         }
     }
 }

@@ -103,6 +103,10 @@ impl Engine {
         self.midi = Some(Midi::new(control_map));
     }
 
+    /// Initialize the engine with a dual output master track
+    pub fn init_daw(&mut self) {
+    }
+
     /// Handle a MIDI event.
     pub fn dispatch_midi(&mut self, data: &[u8], ts: u64) {
         if let Some(ref mut midi) = self.midi {
@@ -185,6 +189,20 @@ impl Core {
         id
     }
 
+    fn init_master(&mut self) {
+        let env_out = self.create_node(modules::Gain::new(), [], []);
+        let ext = self.create_node(modules::Sum::new(), [], []);
+        let ext_gain = self.create_node(modules::ConstCtrl::new(-2.0), [], []);
+        let ext_atten = self.create_node(modules::Gain::new(), [(ext, 0)], [(ext_gain, 0)]);
+        let left_in = self.create_node(modules::Sum::new(), [(env_out, 0), (ext_atten, 0)], []);
+        let right_in = self.create_node(modules::Sum::new(), [(env_out, 0), (ext_atten, 0)], []);
+        let (left_monitor, tx, rx) = modules::Monitor::new();
+        let (right_monitor, tx, rx) = modules::Monitor::new();
+        let left = self.create_node(left_monitor, [(left_in, 0)], []);
+        let right = self.create_node(right_monitor, [(right_in, 0)], []);
+        self.update_sum_node(0, &[left, right]);
+    }
+
     fn init_monosynth(&mut self) -> ControlMap {
         let sample_rate = self.sample_rate;
         let note_pitch = self.create_node(modules::NotePitch::new(), [], []);
@@ -207,7 +225,6 @@ impl Core {
             vec![(attack, 0), (decay, 0), (sustain, 0), (release, 0)],
         );
         let env_out = self.create_node(modules::Gain::new(), [(filter_out, 0)], [(adsr, 0)]);
-
         let ext = self.create_node(modules::Sum::new(), [], []);
         let ext_gain = self.create_node(modules::ConstCtrl::new(-2.0), [], []);
         let ext_atten = self.create_node(modules::Gain::new(), [(ext, 0)], [(ext_gain, 0)]);
@@ -288,11 +305,11 @@ impl Midi {
     }
 
     fn set_ctrl_const(&mut self, core: &mut Core, value: u8, lo: f32, hi: f32, ix: usize, ts: u64) {
-        let value = lo + value as f32 * (1.0 / 127.0) * (hi - lo);
+        let val = lo + value as f32 * (1.0 / 127.0) * (hi - lo);
         let param = SetParam {
-            ix: ix,
+            ix,
             param_ix: 0,
-            val: value,
+            val,
             timestamp: ts,
         };
         core.send(Message::SetParam(param));
@@ -309,9 +326,9 @@ impl Midi {
     ) {
         let note = Note {
             ixs: ixs.into_boxed_slice(),
-            midi_num: midi_num,
-            velocity: velocity,
-            on: on,
+            midi_num,
+            velocity,
+            on,
             timestamp: ts,
         };
         core.send(Message::Note(note));

@@ -14,10 +14,10 @@
 
 //! Synthesizer state and plumbing to UI.
 use crate::grid::{Delta, ModuleGrid, ModuleInstance, WireDelta, WireGrid};
+use core::engine::{Engine, ModuleType, NoteEvent};
 use druid::im::HashMap;
 use druid::{Data, Selector};
 use std::sync::{Arc, Mutex};
-use core::engine::{Engine, ModuleType, NoteEvent};
 use union_find::{QuickUnionUf, UnionByRank, UnionFind};
 
 /// Synthesizer engine state.
@@ -75,7 +75,7 @@ impl SynthState {
                     self.update_wiring();
                 }
                 Delta::Module(inst) => {
-                    self.add_module(inst);
+                    self.add_module(&inst);
                 }
             }
         }
@@ -111,11 +111,13 @@ impl SynthState {
         let output_uf = uf.find(output_uf);
 
         let mut output_bus = Vec::new();
-        // Make borrow checker happy :/
-        let outputs_clone = self.outputs.clone();
-        for ((i, j), node) in &outputs_clone {
-            let uf = self.find_node((*i, *j));
-            let uf = Arc::make_mut(&mut self.uf).find(uf);
+        for ((i, j), node) in &self.outputs {
+            let uf = Arc::make_mut(&mut self.uf);
+            let uf = self
+                .coord_to_node
+                .entry((*i, *j))
+                .or_insert_with(|| uf.insert(Default::default()));
+            let uf = Arc::make_mut(&mut self.uf).find(*uf);
             if uf == output_uf {
                 output_bus.push(*node);
             }

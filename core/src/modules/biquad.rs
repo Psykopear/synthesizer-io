@@ -61,12 +61,7 @@ fn svf_lp(log_f: f32, res: f32) -> StateParams {
     let b = [a2, a3];
     let c = [0.5 * a2, 1.0 - 0.5 * a3];
     let d = 0.5 * a3;
-    StateParams {
-        a: a,
-        b: b,
-        c: c,
-        d: d,
-    }
+    StateParams { a, b, c, d }
 }
 
 // See https://github.com/google/music-synthesizer-for-android/blob/master/lab/Second%20order%20sections%20in%20matrix%20form.ipynb
