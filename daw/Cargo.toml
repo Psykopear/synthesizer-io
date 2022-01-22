@@ -1,0 +1,11 @@
+[package]
+name = "daw"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cpal = "0.13.4"
+midir = "0.7.0"
+druid = { git = "https://github.com/linebender/druid", features=["im"] }
+core = { path = "../core" }
+time_calc = "0.13.0"

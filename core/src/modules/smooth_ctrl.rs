@@ -19,8 +19,8 @@ use crate::module::{Buffer, Module};
 pub struct SmoothCtrl {
     rate: f32,       // smoothed rate (units of updates per ms)
     rategoal: f32,   // unsmoothed rate
-    t: u64,          // timestamp of current time
-    last_set_t: u64, // timestamp of last param setting
+    t: u128,          // timestamp of current time
+    last_set_t: u128, // timestamp of last param setting
     inp: f32,        // raw, unsmoothed value
     mid: f32,        // result of 1 pole of lowpass filtering
     out: f32,        // result of 2 poles of lowpass filtering
@@ -61,13 +61,13 @@ impl Module for SmoothCtrl {
         control_out: &mut [f32],
         _buf_in: &[&Buffer],
         _buf_out: &mut [Buffer],
-        timestamp: u64,
+        timestamp: u128,
     ) {
         self.advance_to(timestamp);
         control_out[0] = self.out;
     }
 
-    fn set_param(&mut self, _param_ix: usize, val: f32, timestamp: u64) {
+    fn set_param(&mut self, _param_ix: usize, val: f32, timestamp: u128) {
         self.advance_to(timestamp);
         if timestamp > self.last_set_t {
             const SLOWEST_RATE: f32 = 0.005; // 0.2s
@@ -84,7 +84,7 @@ impl Module for SmoothCtrl {
 
 impl SmoothCtrl {
     // Analytic solutions of the 3 1-pole lowpass filters under step invariant assumption.
-    fn advance_to(&mut self, t: u64) {
+    fn advance_to(&mut self, t: u128) {
         if t <= self.t {
             return;
         }

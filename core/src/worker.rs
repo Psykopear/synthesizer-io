@@ -86,7 +86,7 @@ impl Worker {
     /// buffers. Lock-free.
     // TODO: leave incoming items in the queue if they have a timestamp in the
     // future.
-    pub fn work(&mut self, timestamp: u64) -> &[Buffer] {
+    pub fn work(&mut self, timestamp: u128) -> &[Buffer] {
         for item in self.to_worker.recv_items() {
             self.handle_item(item);
         }

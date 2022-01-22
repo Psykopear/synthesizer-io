@@ -14,46 +14,13 @@
 
 //! A testbed for experimenting with scope display.
 
-extern crate png;
-
-extern crate synthesize_scope;
-
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
 
 use png::HasParameters;
 
-use synthesize_scope::gauss_approx;
-use synthesize_scope::Scope;
-
-fn mk_uvmap_img<F>(f: F) -> Vec<u8>
-where
-    F: Fn(f32, f32) -> f32,
-{
-    let w = 640;
-    let h = 480;
-    let scale = 2.0 / (w.min(h) as f32);
-    let xs = scale;
-    let x0 = -0.5 * (w as f32) * scale;
-    let ys = scale;
-    let y0 = -0.5 * (h as f32) * scale;
-
-    let mut im = vec![255; w * h * 4];
-    for y in 0..h {
-        let v = (y as f32) * ys + y0;
-        for x in 0..w {
-            let u = (x as f32) * xs + x0;
-            let z = f(u, v);
-            let g = (255.0 * z.max(0.0).min(1.0)) as u8;
-            let ix = (y * w + x) * 4;
-            im[ix + 0] = g;
-            im[ix + 1] = g;
-            im[ix + 2] = g;
-        }
-    }
-    im
-}
+use scope::Scope;
 
 fn main() {
     let path = Path::new("foo.png");

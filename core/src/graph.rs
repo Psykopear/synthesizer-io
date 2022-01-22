@@ -92,7 +92,7 @@ pub struct SetParam {
     pub ix: usize,
     pub param_ix: usize,
     pub val: f32,
-    pub timestamp: u64,
+    pub timestamp: u128,
 }
 
 /// A struct that represents a note on/off event
@@ -101,7 +101,7 @@ pub struct Note {
     pub midi_num: f32,     // 69.0 = A4 (440Hz)
     pub velocity: f32,     // 1 = minimum, 127 = maximum
     pub on: bool,
-    pub timestamp: u64,
+    pub timestamp: u128,
 }
 
 pub trait IntoBoxedSlice<T> {
@@ -228,7 +228,7 @@ impl Graph {
         module_ix: usize,
         ctrl: &mut [f32; MAX_CTRL],
         bufs: &mut [*const Buffer; MAX_BUF],
-        timestamp: u64,
+        timestamp: u128,
     ) {
         {
             let this = self.get_node(module_ix).unwrap();
@@ -301,7 +301,7 @@ impl Graph {
 
     /// Run the graph. On return, the buffer for the given root node will be
     /// filled. Designed to be lock-free.
-    pub fn run_graph(&mut self, root: usize, timestamp: u64) {
+    pub fn run_graph(&mut self, root: usize, timestamp: u128) {
         // scratch space, here to amortize the initialization costs
         let mut ctrl = [0.0f32; MAX_CTRL];
         let mut bufs = [ptr::null(); MAX_BUF];

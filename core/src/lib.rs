@@ -17,8 +17,6 @@
 #[macro_use]
 extern crate lazy_static;
 
-extern crate time;
-
 pub mod engine;
 pub mod graph;
 pub mod id_allocator;

@@ -11,182 +11,93 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-use core::graph::{Message, Node, Note, SetParam};
+use core::engine::Engine;
 use core::module::N_SAMPLES_PER_CHUNK;
 use core::modules as m;
-use core::queue::Sender;
 use core::worker::Worker;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use midir::{MidiInput, MidiInputConnection};
-use std::io::Write;
-
-struct Midi {
-    tx: Sender<Message>,
-    cur_note: Option<u8>,
-}
-
-impl Midi {
-    fn new(tx: Sender<Message>) -> Midi {
-        Midi { tx, cur_note: None }
-    }
-
-    fn send(&self, msg: Message) {
-        self.tx.send(msg);
-    }
-
-    fn set_ctrl_const(&mut self, value: u8, lo: f32, hi: f32, ix: usize, ts: u64) {
-        let val = lo + value as f32 * (1.0 / 127.0) * (hi - lo);
-        let param = SetParam {
-            ix,
-            param_ix: 0,
-            val,
-            timestamp: ts,
-        };
-        self.send(Message::SetParam(param));
-    }
-
-    fn send_note(&mut self, ixs: Vec<usize>, midi_num: f32, velocity: f32, on: bool, ts: u64) {
-        let note = Note {
-            ixs: ixs.into_boxed_slice(),
-            midi_num,
-            velocity,
-            on,
-            timestamp: ts,
-        };
-        self.send(Message::Note(note));
-    }
-
-    fn dispatch_midi(&mut self, data: &[u8], ts: u64) {
-        let mut i = 0;
-        while i < data.len() {
-            if data[i] == 0xb0 {
-                let controller = data[i + 1];
-                let value = data[i + 2];
-                match controller {
-                    1 => self.set_ctrl_const(value, 0.0, 22_000f32.log2(), 3, ts),
-                    2 => self.set_ctrl_const(value, 0.0, 0.995, 4, ts),
-                    3 => self.set_ctrl_const(value, 0.0, 22_000f32.log2(), 5, ts),
-                    5 => self.set_ctrl_const(value, 0.0, 10.0, 11, ts),
-                    6 => self.set_ctrl_const(value, 0.0, 10.0, 12, ts),
-                    7 => self.set_ctrl_const(value, 0.0, 6.0, 13, ts),
-                    8 => self.set_ctrl_const(value, 0.0, 10.0, 14, ts),
-                    _ => println!("don't have handler for controller {}", controller),
-                }
-                i += 3;
-            } else if data[i] == 0x90 || data[i] == 0x80 {
-                let midi_num = data[i + 1];
-                let velocity = data[i + 2];
-                let on = data[i] == 0x90 && velocity > 0;
-                if on || self.cur_note == Some(midi_num) {
-                    self.send_note(vec![5, 7], midi_num as f32, velocity as f32, on, ts);
-                    self.cur_note = if on { Some(midi_num) } else { None }
-                }
-                i += 3;
-            } else {
-                break;
-            }
-        }
-    }
-}
+use std::io::{stdin, stdout, Write};
+use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (mut worker, tx, _rx) = Worker::create(1024);
-    const PITCH: usize = 5;
-    const GAIN: usize = 0;
+    // Initialize the audio worker
+    let (worker, tx, rx) = Worker::create(1024);
 
-    let saw = m::Saw::boxed(44_100.0);
-    worker.handle_node(Node::create(saw, 1, [], [(PITCH, GAIN)]));
+    // Initialize the audio callback
+    // let host = cpal::default_host();
 
-    let ctrl = Box::new(m::SmoothCtrl::new(880.0f32.log2()));
-    worker.handle_node(Node::create(ctrl, 3, [], []));
-
-    let ctrl = Box::new(m::SmoothCtrl::new(0.5));
-    worker.handle_node(Node::create(ctrl, 4, [], []));
-
-    let pitch = Box::new(m::NotePitch::new());
-    worker.handle_node(Node::create(pitch, 5, [], []));
-
-    let biquad = Box::new(m::Biquad::new(44_100.0));
-    worker.handle_node(Node::create(biquad, 6, [(1, 0)], [(3, 0), (4, 0)]));
-
-    let adsr = Box::new(m::Adsr::new());
-    worker.handle_node(Node::create(adsr, 7, [], vec![(11, 0), (12, 0), (13, 0), (14, 0)],));
-
-    let gain = Box::new(m::Gain::new());
-    worker.handle_node(Node::create(gain, 0, [(6, 0)], [(7, 0)]));
-
-    let a = Box::new(m::SmoothCtrl::new(5.0));
-    worker.handle_node(Node::create(a, 11, [], []));
-    let d = Box::new(m::SmoothCtrl::new(5.0));
-    worker.handle_node(Node::create(d, 12, [], []));
-    let s = Box::new(m::SmoothCtrl::new(4.0));
-    worker.handle_node(Node::create(s, 13, [], []));
-    let r = Box::new(m::SmoothCtrl::new(5.0));
-    worker.handle_node(Node::create(r, 14, [], []));
-
-    let _midi_connection = setup_midi(tx); // keep from being dropped
-    let stream = run_cpal(worker);
-    stream.play()?;
-    print!("Press Enter to stop the synth...");
-    std::io::stdout().flush().unwrap();
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input).unwrap();
-    Ok(())
-}
-
-fn setup_midi(tx: Sender<Message>) -> Option<MidiInputConnection<()>> {
-    let mut midi = Midi::new(tx);
-    let mut midi_in = MidiInput::new("midir input").expect("can't create midi input");
-    midi_in.ignore(midir::Ignore::None);
-    let in_ports = midi_in.ports();
-    let in_port = match in_ports.len() {
-        0 => return None,
-        1 => {
-            println!(
-                "Choosing the only available input port: {}",
-                midi_in.port_name(&in_ports[0]).unwrap()
-            );
-            &in_ports[0]
-        }
-        _ => {
-            println!("\nAvailable input ports:");
-            for (i, p) in in_ports.iter().enumerate() {
-                println!("{}: {}", i, midi_in.port_name(p).unwrap());
-            }
-            print!("Please select input port: ");
-            std::io::stdout().flush().unwrap();
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input).unwrap();
-            in_ports
-                .get(input.trim().parse::<usize>().unwrap())
-                .ok_or("invalid input port selected")
-                .unwrap()
-        }
-    };
-    let result = midi_in.connect(
-        in_port,
-        "in",
-        move |ts, data, _| {
-            midi.dispatch_midi(data, ts);
-        },
-        (),
-    );
-    if let Err(ref e) = result {
-        println!("error connecting to midi: {:?}", e);
-    }
-    result.ok()
-}
-
-fn run_cpal(worker: Worker) -> cpal::Stream {
-    let host = cpal::default_host();
+    let host = cpal::host_from_id(cpal::available_hosts()
+            .into_iter()
+            .find(|id| *id == cpal::HostId::Jack)
+            .expect(
+                "make sure --features jack is specified. only works on OSes where jack is available",
+            )).expect("jack host unavailable");
     let device = host.default_output_device().unwrap();
     let config = device.default_output_config().unwrap();
-    match config.sample_format() {
+    let sample_rate = config.sample_rate().0 as f32;
+    let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => run::<f32>(&device, &config.into(), worker).unwrap(),
         cpal::SampleFormat::I16 => run::<i16>(&device, &config.into(), worker).unwrap(),
         cpal::SampleFormat::U16 => run::<u16>(&device, &config.into(), worker).unwrap(),
-    }
+    };
+    // Play the stream
+    stream.play()?;
+
+    // Initialize the audio engine
+    let mut engine = Engine::new(sample_rate, rx, tx);
+
+    // Init track
+    let bass_track = engine.add_track();
+    dbg!(sample_rate);
+
+    // Bass synth definition
+    // Note control
+    let pitch = engine.create_node(m::NotePitch::new(), [], []);
+    // Oscillator
+    let saw = engine.create_node(m::Saw::new(sample_rate), [], [(pitch, 0)]);
+    // Filter
+    let freq = engine.create_node(m::SmoothCtrl::new(440.0f32.log2()), [], []);
+    let reso = engine.create_node(m::SmoothCtrl::new(0.2), [], []);
+    let filter = engine.create_node(
+        m::Biquad::new(sample_rate),
+        [(saw, 0)],
+        [(freq, 0), (reso, 0)],
+    );
+    // Envelope
+    let attack = engine.create_node(m::SmoothCtrl::new(5.), [], []);
+    let decay = engine.create_node(m::SmoothCtrl::new(5.), [], []);
+    let sustain = engine.create_node(m::SmoothCtrl::new(4.), [], []);
+    let release = engine.create_node(m::SmoothCtrl::new(5.), [], []);
+    let adsr = engine.create_node(
+        m::Adsr::new(),
+        [],
+        vec![(attack, 0), (decay, 0), (sustain, 0), (release, 0)],
+    );
+    // Output
+    let bass_synth = engine.create_node(m::Gain::new(), [(filter, 0)], [(adsr, 0)]);
+    // Add device to track
+    engine.set_track_node(bass_track, [(bass_synth, 0)]);
+
+    engine.send_note_on(vec![pitch, adsr], 42., 50.);
+    print!("Enter Enter to stop playing");
+    stdout().flush()?;
+    let mut input = String::new();
+    stdin().read_line(&mut input)?;
+
+    // Create a clip
+    // let mut clip = Clip::new(Bars(1));
+    // let note = Note {
+    //     freq: 49.9,
+    //     dur: Beats(1).to_ticks(),
+    // };
+    // clip.add_note(&note, Ticks(0));
+    // clip.add_note(&note, Beats(3).to_ticks());
+
+    // Set loop region
+    // engine.loop(Bars(0), Bars(1));
+    // Play
+    // engine.play();
+    Ok(())
 }
 
 pub fn run<T>(
@@ -197,7 +108,8 @@ pub fn run<T>(
 where
     T: cpal::Sample,
 {
-    // let sample_rate = config.sample_rate.0 as f32;
+    // let sample_rate = config.sample_rate.0;
+    let start_time = Instant::now();
     // let channels = config.channels as usize;
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
 
@@ -205,26 +117,18 @@ where
         config,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
             let mut i = 0;
-            let mut timestamp = time::precise_time_ns();
             while i < data.len() {
-                // should let the graph generate stereo
-                let buf = worker.work(timestamp)[0].get();
+                let ts = Instant::now()
+                    .saturating_duration_since(start_time)
+                    .as_nanos();
+                let buf = worker.work(ts)[0].get();
                 for j in 0..N_SAMPLES_PER_CHUNK {
-                    // TODO: This check wasn't needed in the original version.
-                    // data.len() can change, and is not necessarily a multiple
-                    // of N_SAMPLES_PER_CHUNK * 2, so at some point I have a chunk
-                    // of data and not enough space left inside `data`.
-                    // What should I do there? For now I leave the rest of the
-                    // buffer as it is, but we lose at most one chunk of data.
                     if data.len() > (i + j * 2 + 1) {
                         let value: T = cpal::Sample::from::<f32>(&buf[j]);
                         data[i + j * 2] = value;
                         data[i + j * 2 + 1] = value;
                     }
                 }
-
-                // TODO: calculate properly, magic value is 64 * 1e9 / 44_100
-                timestamp += 1451247 * (N_SAMPLES_PER_CHUNK as u64) / 64;
                 i += N_SAMPLES_PER_CHUNK * 2;
             }
         },

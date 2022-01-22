@@ -8,4 +8,4 @@ edition = "2021"
 
 [dependencies]
 lazy_static = "1.0"
-time = "0.1"
+time_calc = "0.13.0"

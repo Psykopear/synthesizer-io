@@ -81,14 +81,16 @@ pub trait Module: ToAny + Send {
         control_out: &mut [f32],
         buf_in: &[&Buffer],
         buf_out: &mut [Buffer],
-        timestamp: u64,
+        timestamp: u128,
     ) {
         self.process(control_in, control_out, buf_in, buf_out);
     }
 
+    /// Set input wiring for audio
+
     /// Set a param (or, in general, accept a control message).
     #[allow(unused)]
-    fn set_param(&mut self, param_ix: usize, val: f32, timestamp: u64) {}
+    fn set_param(&mut self, param_ix: usize, val: f32, timestamp: u128) {}
 
     /// Handle a note on or off message.
     #[allow(unused)]

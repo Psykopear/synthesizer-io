@@ -14,25 +14,12 @@
 
 //! Interface for the audio engine.
 
-use time;
-
 use crate::graph::{IntoBoxedSlice, Message, Node, Note, SetParam};
 use crate::id_allocator::IdAllocator;
 use crate::module::Module;
 use crate::modules;
 use crate::queue::{Receiver, Sender};
-
-/// The interface from the application to the audio engine.
-///
-/// It doesn't do the synthesis itself; the Worker (running in a real time
-/// thread) handles that, but this module is responsible for driving
-/// that process by sending messages.
-pub struct Engine {
-    core: Core,
-
-    // We have a midi state in the engine, but this may get factored out.
-    midi: Option<Midi>,
-}
+use time_calc::{Bars, Beats, Bpm, Ms, Ppqn, SampleHz, Ticks, TimeSig};
 
 /// Type used to identify nodes in the external interface (not to be confused
 /// with nodes in the low-level graph).
@@ -45,15 +32,68 @@ pub enum ModuleType {
     Saw,
 }
 
-/// The core owns the connection to the real-time worker.
-struct Core {
+#[derive(PartialEq)]
+pub struct Track {
+    id: usize,
+}
+
+impl Track {
+    pub fn new(id: usize) -> Self {
+        Self { id }
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct Transport {
+    pub current_time: Ms,
+    pub current_bar: Bars,
+    pub current_beat: Beats,
+    start_time: Ms,
+    pub playing: bool,
+    pub recording: bool,
+    pub looping: Option<(Ticks, Ticks)>,
+    pub bpm: Bpm,
+    pub ppqn: Ppqn,
+    pub sample_rate: SampleHz,
+    pub time_signature: TimeSig,
+}
+
+impl Default for Transport {
+    fn default() -> Self {
+        Self {
+            playing: false,
+            current_time: Ms(0.),
+            current_bar: Bars(0),
+            current_beat: Beats(1),
+            start_time: Ms(0.),
+            recording: false,
+            looping: None,
+            bpm: 120.,
+            sample_rate: 44_100.0,
+            // ppqn: 19_200,
+            ppqn: 8,
+            time_signature: TimeSig { top: 4, bottom: 4 },
+        }
+    }
+}
+
+/// The interface from the application to the audio engine.
+///
+/// It doesn't do the synthesis itself; the Worker (running in a real time
+/// thread) handles that, but this module is responsible for driving
+/// that process by sending messages.
+pub struct Engine {
     sample_rate: f32,
     rx: Receiver<Message>,
     tx: Sender<Message>,
 
+    transport: Transport,
+
     id_alloc: IdAllocator,
 
     monitor_queues: Option<MonitorQueues>,
+
+    tracks: Vec<Track>,
 }
 
 #[derive(Clone)]
@@ -63,110 +103,39 @@ pub struct NoteEvent {
     pub velocity: u8,
 }
 
-struct Midi {
-    control_map: ControlMap,
-    cur_note: Option<u8>,
-}
-
-struct ControlMap {
-    cutoff: usize,
-    reso: usize,
-
-    attack: usize,
-    decay: usize,
-    sustain: usize,
-    release: usize,
-
-    // node number of node that can be replaced to inject more audio
-    ext: usize,
-
-    note_receivers: Vec<usize>,
-}
-
 struct MonitorQueues {
     rx: Receiver<Vec<f32>>,
     tx: Sender<Vec<f32>>,
 }
 
 impl Engine {
-    /// Create a new engine instance.
-    ///
-    /// This call takes ownership of channels to and from the worker.
     pub fn new(sample_rate: f32, rx: Receiver<Message>, tx: Sender<Message>) -> Engine {
-        let core = Core::new(sample_rate, rx, tx);
-        Engine { core, midi: None }
-    }
-
-    /// Initialize the engine with a simple mono synth.
-    pub fn init_monosynth(&mut self) {
-        let control_map = self.core.init_monosynth();
-        self.midi = Some(Midi::new(control_map));
-    }
-
-    /// Initialize the engine with a dual output master track
-    pub fn init_daw(&mut self) {
-    }
-
-    /// Handle a MIDI event.
-    pub fn dispatch_midi(&mut self, data: &[u8], ts: u64) {
-        if let Some(ref mut midi) = self.midi {
-            midi.dispatch_midi(&mut self.core, data, ts);
-        }
-    }
-
-    /// Handle a note event.
-    pub fn dispatch_note_event(&mut self, note_event: &NoteEvent) {
-        if let Some(ref mut midi) = self.midi {
-            midi.dispatch_note_event(&mut self.core, note_event);
-        }
-    }
-
-    /// Poll the return queue. Right now this just returns the number of items
-    /// retrieved.
-    pub fn poll_rx(&mut self) -> usize {
-        self.core.poll_rx()
-    }
-
-    /// Poll the monitor queue, retrieving audio data.
-    pub fn poll_monitor(&mut self) -> Vec<f32> {
-        self.core.poll_monitor()
-    }
-
-    /// Instantiate a module. Right now, the module has no inputs and the output
-    /// is run directly to the output bus, but we'll soon add the ability to
-    /// manipulate a wiring graph.
-    ///
-    /// Returns an id for the module's output. (TODO: will obviously need work for
-    /// multi-output modules)
-    pub fn instantiate_module(&mut self, node_id: NodeId, ty: ModuleType) -> usize {
-        self.core.instantiate_module(node_id, ty)
-    }
-
-    /// Set the output bus.
-    pub fn set_outputs(&mut self, outputs: &[usize]) {
-        let sum_node = match self.midi {
-            Some(Midi {
-                control_map: ControlMap { ext, .. },
-                ..
-            }) => ext,
-            _ => 0,
-        };
-        self.core.update_sum_node(sum_node, outputs);
-    }
-}
-
-impl Core {
-    fn new(sample_rate: f32, rx: Receiver<Message>, tx: Sender<Message>) -> Core {
         let mut id_alloc = IdAllocator::new();
         id_alloc.reserve(0);
         let monitor_queues = None;
-        Core {
+        Engine {
             sample_rate,
             rx,
             tx,
             id_alloc,
             monitor_queues,
+            tracks: vec![],
+            transport: Transport::default(),
         }
+    }
+
+    pub fn add_track(&mut self) -> usize {
+        let track_id = self.create_node(modules::Sum::new(), [], []);
+        let track = Track::new(track_id);
+        self.tracks.push(track);
+        self.update_master();
+        track_id
+    }
+
+    pub fn set_track_node<B: IntoBoxedSlice<(usize, usize)>>(&mut self, track_id: usize, wiring: B) {
+        let track = Box::new(modules::Sum::new());
+        self.send_node(Node::create(track, track_id, wiring, []));
+        self.update_master();
     }
 
     pub fn create_node<
@@ -189,64 +158,33 @@ impl Core {
         id
     }
 
-    fn init_master(&mut self) {
-        let env_out = self.create_node(modules::Gain::new(), [], []);
-        let ext = self.create_node(modules::Sum::new(), [], []);
-        let ext_gain = self.create_node(modules::ConstCtrl::new(-2.0), [], []);
-        let ext_atten = self.create_node(modules::Gain::new(), [(ext, 0)], [(ext_gain, 0)]);
-        let left_in = self.create_node(modules::Sum::new(), [(env_out, 0), (ext_atten, 0)], []);
-        let right_in = self.create_node(modules::Sum::new(), [(env_out, 0), (ext_atten, 0)], []);
-        let (left_monitor, tx, rx) = modules::Monitor::new();
-        let (right_monitor, tx, rx) = modules::Monitor::new();
-        let left = self.create_node(left_monitor, [(left_in, 0)], []);
-        let right = self.create_node(right_monitor, [(right_in, 0)], []);
-        self.update_sum_node(0, &[left, right]);
+    pub fn send_note_on(&mut self, ixs: Vec<usize>, midi_num: f32, velocity: f32) {
+        self.tx.send(Message::Note(Note {
+            ixs: ixs.into_boxed_slice(),
+            midi_num,
+            velocity,
+            on: true,
+            timestamp: 0,
+        }));
     }
 
-    fn init_monosynth(&mut self) -> ControlMap {
-        let sample_rate = self.sample_rate;
-        let note_pitch = self.create_node(modules::NotePitch::new(), [], []);
-        let saw = self.create_node(modules::Saw::new(sample_rate), [], [(note_pitch, 0)]);
-        let cutoff = self.create_node(modules::SmoothCtrl::new(880.0f32.log2()), [], []);
-        let reso = self.create_node(modules::SmoothCtrl::new(0.5), [], []);
-        let filter_out = self.create_node(
-            modules::Biquad::new(sample_rate),
-            [(saw, 0)],
-            [(cutoff, 0), (reso, 0)],
+    pub fn send_note_off(&mut self, ixs: Vec<usize>, midi_num: f32) {
+        self.tx.send(Message::Note(Note {
+            ixs: ixs.into_boxed_slice(),
+            midi_num,
+            velocity: 0.,
+            on: false,
+            timestamp: 0,
+        }));
+    }
+
+    pub fn remove_track(&mut self, ix: usize) {
+        self.tracks.swap_remove(
+            self.tracks
+                .iter()
+                .position(|x| x.id == ix)
+                .expect("Existing track id"),
         );
-
-        let attack = self.create_node(modules::SmoothCtrl::new(5.0), [], []);
-        let decay = self.create_node(modules::SmoothCtrl::new(5.0), [], []);
-        let sustain = self.create_node(modules::SmoothCtrl::new(4.0), [], []);
-        let release = self.create_node(modules::SmoothCtrl::new(5.0), [], []);
-        let adsr = self.create_node(
-            modules::Adsr::new(),
-            [],
-            vec![(attack, 0), (decay, 0), (sustain, 0), (release, 0)],
-        );
-        let env_out = self.create_node(modules::Gain::new(), [(filter_out, 0)], [(adsr, 0)]);
-        let ext = self.create_node(modules::Sum::new(), [], []);
-        let ext_gain = self.create_node(modules::ConstCtrl::new(-2.0), [], []);
-        let ext_atten = self.create_node(modules::Gain::new(), [(ext, 0)], [(ext_gain, 0)]);
-
-        let monitor_in = self.create_node(modules::Sum::new(), [(env_out, 0), (ext_atten, 0)], []);
-
-        let (monitor, tx, rx) = modules::Monitor::new();
-        self.monitor_queues = Some(MonitorQueues { tx, rx });
-        let monitor = self.create_node(monitor, [(monitor_in, 0)], []);
-
-        self.update_sum_node(0, &[monitor]);
-
-        ControlMap {
-            cutoff,
-            reso,
-            attack,
-            decay,
-            sustain,
-            release,
-            ext,
-            note_receivers: vec![note_pitch, adsr],
-        }
     }
 
     fn send(&self, msg: Message) {
@@ -273,13 +211,13 @@ impl Core {
         result
     }
 
-    fn update_sum_node(&mut self, sum_node: usize, outputs: &[usize]) {
+    fn update_master(&mut self) {
         let module = Box::new(modules::Sum::new());
-        let buf_wiring: Vec<_> = outputs.iter().map(|n| (*n, 0)).collect();
-        self.send_node(Node::create(module, sum_node, buf_wiring, []));
+        let buf_wiring: Vec<_> = self.tracks.iter().map(|n| (n.id, 0)).collect();
+        self.send_node(Node::create(module, 0, buf_wiring, []));
     }
 
-    fn instantiate_module(&mut self, _node_id: NodeId, ty: ModuleType) -> usize {
+    fn instantiate_module(&mut self, ty: ModuleType) -> usize {
         let ll_id = match ty {
             ModuleType::Sin => {
                 let pitch = self.create_node(modules::SmoothCtrl::new(440.0f32.log2()), [], []);
@@ -293,103 +231,5 @@ impl Core {
             }
         };
         ll_id
-    }
-}
-
-impl Midi {
-    fn new(control_map: ControlMap) -> Midi {
-        Midi {
-            control_map,
-            cur_note: None,
-        }
-    }
-
-    fn set_ctrl_const(&mut self, core: &mut Core, value: u8, lo: f32, hi: f32, ix: usize, ts: u64) {
-        let val = lo + value as f32 * (1.0 / 127.0) * (hi - lo);
-        let param = SetParam {
-            ix,
-            param_ix: 0,
-            val,
-            timestamp: ts,
-        };
-        core.send(Message::SetParam(param));
-    }
-
-    fn send_note(
-        &mut self,
-        core: &mut Core,
-        ixs: Vec<usize>,
-        midi_num: f32,
-        velocity: f32,
-        on: bool,
-        ts: u64,
-    ) {
-        let note = Note {
-            ixs: ixs.into_boxed_slice(),
-            midi_num,
-            velocity,
-            on,
-            timestamp: ts,
-        };
-        core.send(Message::Note(note));
-    }
-
-    fn dispatch_midi(&mut self, core: &mut Core, data: &[u8], ts: u64) {
-        let mut i = 0;
-        while i < data.len() {
-            if data[i] == 0xb0 {
-                let controller = data[i + 1];
-                let value = data[i + 2];
-                match controller {
-                    1 => {
-                        let cutoff = self.control_map.cutoff;
-                        self.set_ctrl_const(core, value, 0.0, 22_000f32.log2(), cutoff, ts);
-                    }
-                    2 => {
-                        let reso = self.control_map.reso;
-                        self.set_ctrl_const(core, value, 0.0, 0.995, reso, ts);
-                    }
-
-                    5 => {
-                        let attack = self.control_map.attack;
-                        self.set_ctrl_const(core, value, 0.0, 10.0, attack, ts);
-                    }
-                    6 => {
-                        let decay = self.control_map.decay;
-                        self.set_ctrl_const(core, value, 0.0, 10.0, decay, ts);
-                    }
-                    7 => {
-                        let sustain = self.control_map.sustain;
-                        self.set_ctrl_const(core, value, 0.0, 6.0, sustain, ts);
-                    }
-                    8 => {
-                        let release = self.control_map.release;
-                        self.set_ctrl_const(core, value, 0.0, 10.0, release, ts);
-                    }
-                    _ => println!("don't have handler for controller {}", controller),
-                }
-                i += 3;
-            } else if data[i] == 0x90 || data[i] == 0x80 {
-                let midi_num = data[i + 1];
-                let velocity = data[i + 2];
-                let on = data[i] == 0x90 && velocity > 0;
-                if on || self.cur_note == Some(midi_num) {
-                    let targets = self.control_map.note_receivers.clone();
-                    self.send_note(core, targets, midi_num as f32, velocity as f32, on, ts);
-                    self.cur_note = if on { Some(midi_num) } else { None }
-                }
-                i += 3;
-            } else {
-                break;
-            }
-        }
-    }
-
-    fn dispatch_note_event(&mut self, core: &mut Core, note_event: &NoteEvent) {
-        let mut data = [0u8; 3];
-        data[0] = if note_event.down { 0x90 } else { 0x80 };
-        data[1] = note_event.note;
-        data[2] = note_event.velocity;
-        self.dispatch_midi(core, &data, time::precise_time_ns());
     }
 }
