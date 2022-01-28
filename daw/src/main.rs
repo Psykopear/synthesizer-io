@@ -67,7 +67,7 @@ where
         config,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
             let mut i = 0;
-            let mut timestamp = Instant::now().elapsed().as_nanos() as u64;
+            let mut timestamp = Instant::now().elapsed().as_millis() as u64;
             while i < data.len() {
                 // should let the graph generate stereo
                 let buf = worker.work(timestamp)[0].get();

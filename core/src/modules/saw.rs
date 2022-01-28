@@ -111,7 +111,7 @@ impl Module for Saw {
         let logf = control_in[0] + self.sr_offset;
         let slice_off = -SLICE_BASE - LG_N_SAMPLES as f32;
         let slice = (logf + slice_off) * SLICES_PER_OCTAVE as f32;
-        //println!("logf={}, slice={}", logf, slice);
+        // println!("logf={}, slice={}", logf, slice);
         let freq = logf.exp2();
         let out = buf_out[0].get_mut();
         let mut phase = self.phase;

@@ -14,6 +14,9 @@
 
 //! Interface for the audio engine.
 
+use std::collections::BTreeMap;
+use std::time::Duration;
+
 use crate::graph::{IntoBoxedSlice, Message, Node, Note, SetParam};
 use crate::id_allocator::IdAllocator;
 use crate::module::Module;
@@ -25,55 +28,113 @@ use time_calc::{Bars, Beats, Bpm, Ms, Ppqn, SampleHz, Ticks, TimeSig};
 /// with nodes in the low-level graph).
 pub type NodeId = usize;
 
-/// The type of a module to be instantiated. It's not clear this should be
-/// an enum, but it should do for now.
-pub enum ModuleType {
-    Sin,
-    Saw,
+#[derive(Clone, Debug)]
+pub struct ClipNote {
+    midi: f32,
+    dur: Ticks,
 }
 
-#[derive(PartialEq)]
+impl ClipNote {
+    pub fn new(midi: f32, dur: Ticks) -> Self {
+        Self { midi, dur }
+    }
+}
+
+#[derive(Debug)]
+pub struct Clip {
+    notes: BTreeMap<Ticks, Vec<ClipNote>>,
+    duration: Ticks,
+}
+
+impl Clip {
+    pub fn new(duration: Ticks) -> Self {
+        Self {
+            notes: BTreeMap::new(),
+            duration,
+        }
+    }
+
+    pub fn add_note(&mut self, note: ClipNote, position: Ticks) {
+        if self.notes.contains_key(&position) {
+            self.notes.get_mut(&position).unwrap().push(note);
+        } else {
+            self.notes.insert(position, vec![note]);
+        }
+    }
+
+    pub fn get_next_notes(&self, position: &Ticks) -> Vec<ClipNote> {
+        for (note_pos, note) in &self.notes {
+            if note_pos > position {
+                return note.to_vec();
+            }
+        }
+        return vec![];
+    }
+}
+
+#[derive(Debug)]
 pub struct Track {
     id: usize,
+    clips: BTreeMap<Ticks, Clip>,
+    control: Box<[(usize, usize)]>,
 }
 
 impl Track {
     pub fn new(id: usize) -> Self {
-        Self { id }
+        Self {
+            id,
+            clips: BTreeMap::new(),
+            control: vec![].into(),
+        }
+    }
+
+    pub fn add_clip(&mut self, position: Ticks, clip: Clip) {
+        self.clips.insert(position, clip);
+    }
+
+    pub fn set_control<B: IntoBoxedSlice<(usize, usize)>>(&mut self, control: B) {
+        self.control = control.into_box();
     }
 }
 
 #[derive(Clone, PartialEq)]
 pub struct Transport {
-    pub current_time: Ms,
-    pub current_bar: Bars,
-    pub current_beat: Beats,
-    start_time: Ms,
+    pub current_position: Ticks,
+    pub start_time: Option<u128>,
+
     pub playing: bool,
     pub recording: bool,
     pub looping: Option<(Ticks, Ticks)>,
+
+    pub time_signature: TimeSig,
     pub bpm: Bpm,
     pub ppqn: Ppqn,
+
     pub sample_rate: SampleHz,
-    pub time_signature: TimeSig,
 }
 
 impl Default for Transport {
     fn default() -> Self {
         Self {
+            start_time: None,
+            current_position: Ticks(0),
             playing: false,
-            current_time: Ms(0.),
-            current_bar: Bars(0),
-            current_beat: Beats(1),
-            start_time: Ms(0.),
             recording: false,
             looping: None,
             bpm: 120.,
-            sample_rate: 44_100.0,
+            sample_rate: 48_000.0,
             // ppqn: 19_200,
             ppqn: 8,
             time_signature: TimeSig { top: 4, bottom: 4 },
         }
+    }
+}
+
+impl Transport {
+    pub fn new(sample_rate: SampleHz) -> Self {
+        let mut transport = Self::default();
+        transport.sample_rate = sample_rate;
+        transport
     }
 }
 
@@ -83,7 +144,6 @@ impl Default for Transport {
 /// thread) handles that, but this module is responsible for driving
 /// that process by sending messages.
 pub struct Engine {
-    sample_rate: f32,
     rx: Receiver<Message>,
     tx: Sender<Message>,
 
@@ -91,8 +151,8 @@ pub struct Engine {
 
     id_alloc: IdAllocator,
 
-    monitor_queues: Option<MonitorQueues>,
-
+    // monitor_queues: Option<MonitorQueues>,
+    // time_rx: Receiver<u128>,
     tracks: Vec<Track>,
 }
 
@@ -111,18 +171,100 @@ struct MonitorQueues {
 impl Engine {
     pub fn new(sample_rate: f32, rx: Receiver<Message>, tx: Sender<Message>) -> Engine {
         let mut id_alloc = IdAllocator::new();
+        // Master track
         id_alloc.reserve(0);
-        let monitor_queues = None;
+        // Timesync
+        // id_alloc.reserve(1);
+        // let monitor_queues = None;
+        // let (_, time_rx) = modules::TimeSync::new((1. / sample_rate * 1000.) as u128);
         Engine {
-            sample_rate,
             rx,
             tx,
             id_alloc,
-            monitor_queues,
+            // monitor_queues,
             tracks: vec![],
-            transport: Transport::default(),
+            transport: Transport::new(sample_rate as f64),
+            // time_rx,
         }
     }
+
+    //     pub fn run(&mut self) {
+    //         let mut events: Vec<Note> = vec![];
+    //         // let mut ts = None;
+    //         let mut num = 0;
+    //         loop {
+    //             if let Some(_ts) = self.time_rx.recv_items().last() {
+    //                 let ts = *_ts;
+    //                 // Set start_time if playing
+    //                 if self.transport.playing && self.transport.start_time.is_none() {
+    //                     self.transport.start_time = Some(ts);
+    //                 }
+    //                 // Set start_time if just stopped
+    //                 if !self.transport.playing && self.transport.start_time.is_some() {
+    //                     self.transport.start_time = None;
+    //                 }
+    //                 if self.transport.playing {
+    //                     // Update position
+    //                     let millis = ts - self.transport.start_time.unwrap();
+    //                     self.transport.current_position =
+    //                         Ms(millis as f64).to_ticks(self.transport.bpm, self.transport.ppqn);
+    //                     if let Some((start, end)) = self.transport.looping {
+    //                         if self.transport.current_position >= end {
+    //                             self.transport.current_position = start;
+    //                             self.transport.start_time = Some(ts);
+    //                         }
+    //                     }
+    //                     // Consume queued events
+    //                     let mut i = 0;
+    //                     while i < events.len() {
+    //                         if events[i].timestamp >= *_ts {
+    //                             let note = events.remove(i);
+    //                             self.tx.send(Message::Note(note));
+    //                         } else {
+    //                             i += 1;
+    //                         }
+    //                     }
+    //                     for track in &self.tracks {
+    //                         for (_position, clip) in &track.clips {
+    //                             // dbg!(&clip.notes);
+    //                             if let Some(notes) = clip.notes.get(&self.transport.current_position) {
+    //                                 for note in notes {
+    //                                     num += 1;
+    //                                     self.tx.send(Message::Note(Note {
+    //                                         ixs: track.control.clone().into_boxed_slice(),
+    //                                         midi_num: note.midi,
+    //                                         velocity: 100.,
+    //                                         on: true,
+    //                                         timestamp: *_ts,
+    //                                     }));
+    //                                     events.push(Note {
+    //                                         ixs: track.control.clone().into_boxed_slice(),
+    //                                         midi_num: note.midi,
+    //                                         velocity: 0.,
+    //                                         on: false,
+    //                                         timestamp: *_ts
+    //                                             + (note
+    //                                                 .dur
+    //                                                 .to_ms(self.transport.bpm, self.transport.ppqn)
+    //                                                 .0)
+    //                                                 as u128,
+    //                                     });
+    //                                 }
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    //
+    //     pub fn set_loop(&mut self, start: Ticks, end: Ticks) {
+    //         self.transport.looping = Some((start, end));
+    //     }
+    //
+    //     pub fn play(&mut self) {
+    //         self.transport.playing = true;
+    //     }
 
     pub fn add_track(&mut self) -> usize {
         let track_id = self.create_node(modules::Sum::new(), [], []);
@@ -132,9 +274,28 @@ impl Engine {
         track_id
     }
 
-    pub fn set_track_node<B: IntoBoxedSlice<(usize, usize)>>(&mut self, track_id: usize, wiring: B) {
+    // pub fn add_clip_to_track(&mut self, track_id: usize, clip: Clip, position: Ticks) {
+    //     if let Some(track) = self.tracks.iter_mut().find(|t| t.id == track_id) {
+    //         track.add_clip(position, clip);
+    //     }
+    // }
+
+    pub fn set_track_node<
+        B1: IntoBoxedSlice<(usize, usize)>,
+        B2: IntoBoxedSlice<(usize, usize)>,
+    >(
+        &mut self,
+        track_id: usize,
+        in_buf_wiring: B1,
+        in_ctrl_wiring: B2,
+    ) {
+        // self.tracks
+        //     .iter_mut()
+        //     .find(|t| t.id == track_id)
+        //     .unwrap()
+        //     .set_control(in_ctrl_wiring.clone());
         let track = Box::new(modules::Sum::new());
-        self.send_node(Node::create(track, track_id, wiring, []));
+        self.send_node(Node::create(track, track_id, in_buf_wiring, []));
         self.update_master();
     }
 
@@ -178,6 +339,10 @@ impl Engine {
         }));
     }
 
+    pub fn set_param(&mut self, param: SetParam) {
+        self.send(Message::SetParam(param));
+    }
+
     pub fn remove_track(&mut self, ix: usize) {
         self.tracks.swap_remove(
             self.tracks
@@ -195,41 +360,9 @@ impl Engine {
         self.send(Message::Node(node));
     }
 
-    fn poll_rx(&mut self) -> usize {
-        self.rx.recv().count()
-    }
-
-    fn poll_monitor(&self) -> Vec<f32> {
-        let mut result = Vec::new();
-        if let Some(ref qs) = self.monitor_queues {
-            for mut item in qs.rx.recv_items() {
-                result.extend_from_slice(&item);
-                item.clear();
-                qs.tx.send_item(item);
-            }
-        }
-        result
-    }
-
     fn update_master(&mut self) {
-        let module = Box::new(modules::Sum::new());
+        let master_track = Box::new(modules::Sum::new());
         let buf_wiring: Vec<_> = self.tracks.iter().map(|n| (n.id, 0)).collect();
-        self.send_node(Node::create(module, 0, buf_wiring, []));
-    }
-
-    fn instantiate_module(&mut self, ty: ModuleType) -> usize {
-        let ll_id = match ty {
-            ModuleType::Sin => {
-                let pitch = self.create_node(modules::SmoothCtrl::new(440.0f32.log2()), [], []);
-                let sample_rate = self.sample_rate;
-                self.create_node(modules::Sin::new(sample_rate), [], [(pitch, 0)])
-            }
-            ModuleType::Saw => {
-                let pitch = self.create_node(modules::SmoothCtrl::new(440.0f32.log2()), [], []);
-                let sample_rate = self.sample_rate;
-                self.create_node(modules::Saw::new(sample_rate), [], [(pitch, 0)])
-            }
-        };
-        ll_id
+        self.send_node(Node::create(master_track, 0, buf_wiring, []));
     }
 }

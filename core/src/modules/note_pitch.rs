@@ -22,7 +22,7 @@ pub struct NotePitch {
 
 impl NotePitch {
     pub fn new() -> NotePitch {
-        NotePitch { value: 440.0 }
+        NotePitch { value: 440f32.log2() }
     }
 }
 

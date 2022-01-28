@@ -25,6 +25,7 @@ mod saw;
 mod sin;
 mod smooth_ctrl;
 mod sum;
+mod timesync;
 
 pub use self::adsr::Adsr;
 pub use self::biquad::Biquad;
@@ -37,3 +38,4 @@ pub use self::saw::Saw;
 pub use self::sin::Sin;
 pub use self::smooth_ctrl::SmoothCtrl;
 pub use self::sum::Sum;
+pub use self::timesync::TimeSync;

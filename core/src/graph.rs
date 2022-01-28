@@ -62,6 +62,9 @@ pub enum Message {
     /// it as three separate control lines (gate, pitch, velocity).
     Note(Note),
 
+    /// The current timestamp, used to sync audio thread and engine user
+    Timestamp(u128),
+
     /// A request to shut down in an orderly way. Currently does nothing.
     Quit,
 }
@@ -70,6 +73,13 @@ impl Message {
     fn get_node(&self) -> Option<&Node> {
         match *self {
             Message::Node(ref node) => Some(node),
+            _ => None,
+        }
+    }
+
+    pub fn get_timestamp(&self) -> Option<u128> {
+        match *self {
+            Message::Timestamp(ts) => Some(ts),
             _ => None,
         }
     }
