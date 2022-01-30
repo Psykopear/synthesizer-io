@@ -1,5 +1,9 @@
+mod engine;
+
+use engine::Engine;
+
 use core::module::N_SAMPLES_PER_CHUNK;
-use core::{engine::Engine, worker::Worker};
+use core::worker::Worker;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -22,9 +26,16 @@ fn build_ui() -> impl Widget<AppState> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize the audio worker
-    let (worker, tx, rx) = Worker::create(1024);
-    // Initialize the audio callback
-    let host = cpal::default_host();
+    let (worker, tx, rx, control_rx) = Worker::create(1024);
+
+    // Init host, jack if possible
+    let host = cpal::available_hosts()
+        .into_iter()
+        .find(|id| *id == cpal::HostId::Jack)
+        .map_or_else(
+            || cpal::default_host(),
+            |id| cpal::host_from_id(id).unwrap(),
+        );
     let device = host.default_output_device().unwrap();
     let config = device.default_output_config().unwrap();
     let sample_rate = config.sample_rate().0 as f32;
@@ -37,10 +48,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     stream.play()?;
 
     // Initialize the audio engine
-    let mut engine = Engine::new(sample_rate, rx, tx);
-    engine.init_monosynth();
-    let engine = Arc::new(Mutex::new(engine));
-    let appstate = AppState {};
+    let mut engine = Engine::new(sample_rate, rx, tx, control_rx);
+    engine.init();
+    let appstate = AppState {
+        engine
+    };
     let window = WindowDesc::new(build_ui()).title("Synthesizer IO");
     let launcher = AppLauncher::with_window(window).delegate(Delegate {});
     launcher
@@ -58,29 +70,27 @@ pub fn run<T>(
 where
     T: cpal::Sample,
 {
-    // let sample_rate = config.sample_rate.0 as f32;
-    // let channels = config.channels as usize;
+    // let sample_rate = config.sample_rate.0;
+    let start_time = Instant::now();
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
 
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-            let mut i = 0;
-            let mut timestamp = Instant::now().elapsed().as_millis() as u64;
-            while i < data.len() {
-                // should let the graph generate stereo
-                let buf = worker.work(timestamp)[0].get();
-                for j in 0..N_SAMPLES_PER_CHUNK {
-                    // TODO: Use fixed sized buffer and avoid this check
-                    if data.len() > (i + j * 2 + 1) {
-                        let value: T = cpal::Sample::from::<f32>(&buf[j]);
-                        data[i + j * 2] = value;
-                        data[i + j * 2 + 1] = value;
-                    }
-                }
+            let ts = Instant::now().duration_since(start_time).as_nanos();
+            worker.send_timestamp(ts);
 
-                // TODO: calculate properly, magic value is 64 * 1e9 / 44_100
-                timestamp += 1451247 * (N_SAMPLES_PER_CHUNK as u64) / 64;
+            let mut i = 0;
+            while i < data.len() {
+                let ts = Instant::now()
+                    .saturating_duration_since(start_time)
+                    .as_nanos();
+                let buf = worker.work(ts)[0].get();
+                for j in 0..N_SAMPLES_PER_CHUNK {
+                    let value: T = cpal::Sample::from::<f32>(&buf[j]);
+                    data[i + j * 2] = value;
+                    data[i + j * 2 + 1] = value;
+                }
                 i += N_SAMPLES_PER_CHUNK * 2;
             }
         },

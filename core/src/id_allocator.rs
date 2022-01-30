@@ -16,6 +16,7 @@
 
 /// A simple allocator for reusable unique id's, attempting to keep the
 /// returned values small.
+#[derive(Clone)]
 pub struct IdAllocator {
     // All id's in `free` are free.
     free: Vec<usize>,
