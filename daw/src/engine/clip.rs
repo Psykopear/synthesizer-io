@@ -1,12 +1,21 @@
-use druid::{Data, im::{OrdMap, Vector, vector}};
-use time_calc::Ticks;
 use super::{data::*, Transport};
+use druid::{
+    im::{vector, OrdMap, Vector},
+    Data,
+};
+use time_calc::Ticks;
 
 #[derive(Clone, Debug, Data)]
 pub struct ClipNote {
     pub midi: f32,
     #[data(same_fn = "ticks")]
     pub dur: Ticks,
+}
+
+impl std::fmt::Display for ClipNote {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("Midi {}", self.midi))
+    }
 }
 
 impl ClipNote {

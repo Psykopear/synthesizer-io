@@ -78,44 +78,43 @@ impl Engine {
             return;
         };
 
-        // if self.transport.prev_position.is_some()
-        //     && self.transport.current_position == self.transport.prev_position.unwrap()
-        // {
-        //     return;
-        // }
-
-        // println!("Handling step");
-        for track in &self.tracks {
-            if let Some(notes) = track.get_notes(&self.transport) {
-                dbg!("Sending note", notes, self.transport.current_position);
-                for note in notes {
-                    self.tx.send(Message::Note(Note {
-                        ixs: track.controls().into_boxed_slice(),
-                        midi_num: note.midi,
-                        velocity: 100.,
-                        on: true,
-                        timestamp: ts,
-                    }));
-                    self.events.push_back(Note {
-                        ixs: track.controls().into_boxed_slice(),
-                        midi_num: note.midi,
-                        velocity: 0.,
-                        on: false,
-                        timestamp: ts
-                            + (note.dur.to_ms(self.transport.bpm, self.transport.ppqn).0) as u128,
-                    });
+        if self.transport.prev_position.is_none()
+            || self.transport.current_position != self.transport.prev_position.unwrap()
+        {
+            for track in &self.tracks {
+                if let Some(notes) = track.get_notes(&self.transport) {
+                    println!("Ticks: {}", self.transport.current_position.0);
+                    for note in notes {
+                        println!("{}", note);
+                        self.tx.send(Message::Note(Note {
+                            ixs: track.controls().into_boxed_slice(),
+                            midi_num: note.midi,
+                            velocity: 100.,
+                            on: true,
+                            timestamp: ts,
+                        }));
+                        self.events.push_back(Note {
+                            ixs: track.controls().into_boxed_slice(),
+                            midi_num: note.midi,
+                            velocity: 0.,
+                            on: false,
+                            timestamp: ts
+                                + (note.dur.to_ms(self.transport.bpm, self.transport.ppqn).0)
+                                    as u128,
+                        });
+                    }
                 }
             }
-        }
 
-        // Consume queued events
-        let mut i = 0;
-        while i < self.events.len() {
-            if ts >= self.events[i].timestamp {
-                let note = self.events.remove(i);
-                self.tx.send(Message::Note(note));
-            } else {
-                i += 1;
+            // Consume queued events
+            let mut i = 0;
+            while i < self.events.len() {
+                if ts >= self.events[i].timestamp {
+                    let note = self.events.remove(i);
+                    self.tx.send(Message::Note(note));
+                } else {
+                    i += 1;
+                }
             }
         }
         self.transport.handle(ts);
