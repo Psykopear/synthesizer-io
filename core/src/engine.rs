@@ -133,7 +133,7 @@ impl Default for Transport {
             playing: false,
             recording: false,
             looping: None,
-            bpm: 60.,
+            bpm: 120.,
             sample_rate: 48_000.0,
             // ppqn: 19_200,
             ppqn: 8,
@@ -270,6 +270,8 @@ impl Engine {
                         }
                     }
                 }
+            } else {
+                std::thread::sleep(Duration::from_millis(1));
             }
         }
     }

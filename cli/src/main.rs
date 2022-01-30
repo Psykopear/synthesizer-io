@@ -84,23 +84,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Add device to track
     engine.set_track_node(lead_track, [(lead_synth, 0)], lead_control.clone());
 
-//     dbg!(bass_synth, bass_pitch, bass_adsr);
-//     dbg!(lead_synth, lead_pitch, lead_adsr);
-//     let beat = std::time::Duration::from_millis(1000);
-//
-//     engine.send_note_on(vec![lead_pitch, lead_adsr], 54., 100.);
-//     std::thread::sleep(beat);
-//     engine.send_note_on(vec![bass_pitch, bass_adsr], 42., 50.);
-//     std::thread::sleep(beat);
-//     engine.send_note_off(vec![lead_pitch, lead_adsr], 54.);
-//     engine.send_note_on(vec![lead_pitch, lead_adsr], 55., 50.);
-//     engine.send_note_off(vec![bass_pitch, bass_adsr], 42.);
-//     engine.send_note_on(vec![bass_pitch, bass_adsr], 40., 150.);
-//     std::thread::sleep(beat);
-
-    // Create a clip
     let ts = TimeSig { top: 4, bottom: 4 };
     let ppqn = 8;
+
+    // Create bass clip
     let mut clip = Clip::new(Bars(1).to_ticks(ts, ppqn));
     let note = ClipNote::new(31., Beats(1).to_ticks(ppqn));
     clip.add_note(note, Ticks(1));
@@ -108,8 +95,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     clip.add_note(note, Beats(3).to_ticks(ppqn));
     // Now add clip to track
     engine.add_clip_to_track(bass_track, clip, Ticks(1));
+
+    // Create lead clip
+    let mut clip = Clip::new(Bars(1).to_ticks(ts, ppqn));
+    let note = ClipNote::new(86., Beats(1).to_ticks(ppqn));
+    clip.add_note(note, Beats(2).to_ticks(ppqn));
+    let note = ClipNote::new(86., Beats(1).to_ticks(ppqn));
+    clip.add_note(note, Ticks(1));
+    let note = ClipNote::new(73., Beats(1).to_ticks(ppqn));
+    clip.add_note(note, Beats(4).to_ticks(ppqn));
+    // Now add clip to track
+    engine.add_clip_to_track(lead_track, clip, Ticks(1));
+
     // Set loop region
-    engine.set_loop(Ticks(1), Bars(1).to_ticks(ts, ppqn));
+    engine.set_loop(Ticks(1), Bars(2).to_ticks(ts, ppqn));
     // Play
     engine.play();
     engine.run();
