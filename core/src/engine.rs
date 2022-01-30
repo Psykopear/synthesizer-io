@@ -221,7 +221,7 @@ impl Engine {
     }
 
     pub fn run(&mut self) {
-        // let mut events = vec![];
+        let mut events = vec![];
         loop {
             if let Some(_ts) = self.control_rx.recv_items().last() {
                 let ts = *_ts;
@@ -243,29 +243,32 @@ impl Engine {
                                     on: true,
                                     timestamp: *_ts,
                                 }));
-                                // events.push(Note {
-                                //     ixs: ixs.clone(),
-                                //     midi_num: note.midi,
-                                //     velocity: 0.,
-                                //     on: false,
-                                //     timestamp: *_ts
-                                //         + (note.dur.to_ms(self.transport.bpm, self.transport.ppqn).0)
-                                //             as u128,
-                                // });
+                                let ixs = track.control.to_vec();
+                                events.push(Note {
+                                    ixs: ixs.into_boxed_slice(),
+                                    midi_num: note.midi,
+                                    velocity: 0.,
+                                    on: false,
+                                    timestamp: *_ts
+                                        + (note
+                                            .dur
+                                            .to_ms(self.transport.bpm, self.transport.ppqn)
+                                            .0) as u128,
+                                });
                             }
                         }
                     }
 
                     // Consume queued events
-                    // let mut i = 0;
-                    // while i < events.len() {
-                    //     if events[i].timestamp >= *_ts {
-                    //         let note = events.remove(i);
-                    //         self.tx.send(Message::Note(note));
-                    //     } else {
-                    //         i += 1;
-                    //     }
-                    // }
+                    let mut i = 0;
+                    while i < events.len() {
+                        if *_ts >= events[i].timestamp {
+                            let note = events.remove(i);
+                            self.tx.send(Message::Note(note));
+                        } else {
+                            i += 1;
+                        }
+                    }
                 }
             }
         }
