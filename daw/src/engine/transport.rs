@@ -1,8 +1,8 @@
 use super::data::*;
-use druid::Data;
+use druid::{Data, Lens};
 use time_calc::{Bpm, Ppqn, SampleHz, Ticks, TimeSig, Ms};
 
-#[derive(Clone, Debug, Data, PartialEq)]
+#[derive(Clone, Debug, Data, PartialEq, Lens)]
 pub struct Transport {
     #[data(same_fn = "ticks")]
     pub current_position: Ticks,

@@ -22,10 +22,12 @@ use crate::module::{Buffer, Module};
 use crate::queue::Item;
 
 // maximum number of control inputs
-const MAX_CTRL: usize = 16;
+const MAX_CTRL: usize = 32768;
+// const MAX_CTRL: usize = 16;
 
 // maximum number of buffer inputs
-const MAX_BUF: usize = 16;
+const MAX_BUF: usize = 32768;
+// const MAX_BUF: usize = 16;
 
 const SENTINEL: usize = !0;
 
@@ -106,6 +108,7 @@ pub struct SetParam {
 }
 
 /// A struct that represents a note on/off event
+#[derive(Clone)]
 pub struct Note {
     pub ixs: Box<[usize]>, // list of node ix's affected by this note
     pub midi_num: f32,     // 69.0 = A4 (440Hz)

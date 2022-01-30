@@ -1,5 +1,5 @@
 //! Interface for the audio engine.
-mod clip;
+pub mod clip;
 mod data;
 mod track;
 mod transport;
@@ -16,7 +16,7 @@ use core::queue::{Receiver, Sender};
 
 use druid::im::vector;
 use druid::im::Vector;
-use druid::Data;
+use druid::{Data, Lens};
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,7 +28,7 @@ use time_calc::Ticks;
 /// It doesn't do the synthesis itself; the Worker (running in a real time
 /// thread) handles that, but this module is responsible for driving
 /// that process by sending messages.
-#[derive(Data, Clone)]
+#[derive(Data, Clone, Lens)]
 pub struct Engine {
     #[data(ignore)]
     rx: Arc<Receiver<Message>>,
@@ -38,8 +38,10 @@ pub struct Engine {
     control_rx: Arc<Receiver<u128>>,
     #[data(ignore)]
     id_alloc: Arc<IdAllocator>,
+    #[data(ignore)]
+    events: Vector<Note>,
 
-    transport: Transport,
+    pub transport: Transport,
     tracks: Vector<Track>,
 }
 
@@ -61,6 +63,7 @@ impl Engine {
         // Master track
         id_alloc.reserve(0);
         Engine {
+            events: vector![],
             rx: Arc::new(rx),
             tx: Arc::new(tx),
             control_rx: Arc::new(control_rx),
@@ -70,57 +73,52 @@ impl Engine {
         }
     }
 
-    pub fn run(&mut self) {
-        let mut events = vec![];
-        loop {
-            if let Some(_ts) = self.control_rx.recv_items().last() {
-                let ts = *_ts;
+    pub fn run_step(&mut self, ts: u128) {
+        if !self.transport.playing {
+            return;
+        };
 
-                if self.transport.playing && self.transport.prev_position.is_none()
-                    || self.transport.current_position != self.transport.prev_position.unwrap()
-                {
-                    for track in &self.tracks {
-                        if let Some(notes) = track.get_notes(&self.transport) {
-                            dbg!("Sending note", notes, self.transport.current_position);
-                            for note in notes {
-                                self.tx.send(Message::Note(Note {
-                                    ixs: track.controls().into_boxed_slice(),
-                                    midi_num: note.midi,
-                                    velocity: 100.,
-                                    on: true,
-                                    timestamp: *_ts,
-                                }));
-                                events.push(Note {
-                                    ixs: track.controls().into_boxed_slice(),
-                                    midi_num: note.midi,
-                                    velocity: 0.,
-                                    on: false,
-                                    timestamp: *_ts
-                                        + (note
-                                            .dur
-                                            .to_ms(self.transport.bpm, self.transport.ppqn)
-                                            .0) as u128,
-                                });
-                            }
-                        }
-                    }
+        // if self.transport.prev_position.is_some()
+        //     && self.transport.current_position == self.transport.prev_position.unwrap()
+        // {
+        //     return;
+        // }
 
-                    // Consume queued events
-                    let mut i = 0;
-                    while i < events.len() {
-                        if *_ts >= events[i].timestamp {
-                            let note = events.remove(i);
-                            self.tx.send(Message::Note(note));
-                        } else {
-                            i += 1;
-                        }
-                    }
+        // println!("Handling step");
+        for track in &self.tracks {
+            if let Some(notes) = track.get_notes(&self.transport) {
+                dbg!("Sending note", notes, self.transport.current_position);
+                for note in notes {
+                    self.tx.send(Message::Note(Note {
+                        ixs: track.controls().into_boxed_slice(),
+                        midi_num: note.midi,
+                        velocity: 100.,
+                        on: true,
+                        timestamp: ts,
+                    }));
+                    self.events.push_back(Note {
+                        ixs: track.controls().into_boxed_slice(),
+                        midi_num: note.midi,
+                        velocity: 0.,
+                        on: false,
+                        timestamp: ts
+                            + (note.dur.to_ms(self.transport.bpm, self.transport.ppqn).0) as u128,
+                    });
                 }
-                self.transport.handle(ts);
-            } else {
-                std::thread::sleep(Duration::from_millis(1));
             }
         }
+
+        // Consume queued events
+        let mut i = 0;
+        while i < self.events.len() {
+            if ts >= self.events[i].timestamp {
+                let note = self.events.remove(i);
+                self.tx.send(Message::Note(note));
+            } else {
+                i += 1;
+            }
+        }
+        self.transport.handle(ts);
     }
 
     pub fn set_loop(&mut self, start: Ticks, end: Ticks) {
