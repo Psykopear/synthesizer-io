@@ -23,6 +23,7 @@ use crate::queue::{Item, Queue, Receiver, Sender};
 pub struct Worker {
     to_worker: Receiver<Message>,
     from_worker: Sender<Message>,
+    control_tx: Sender<u128>,
     graph: Graph,
     root: usize,
 }
@@ -30,17 +31,19 @@ pub struct Worker {
 impl Worker {
     /// Create a new worker, with the specified maximum number of graph nodes,
     /// and set up communication channels.
-    pub fn create(max_size: usize) -> (Worker, Sender<Message>, Receiver<Message>) {
+    pub fn create(max_size: usize) -> (Worker, Sender<Message>, Receiver<Message>, Receiver<u128>) {
         let (tx, to_worker) = Queue::new();
         let (from_worker, rx) = Queue::new();
+        let (control_tx, control_rx) = Queue::new();
         let graph = Graph::new(max_size);
         let worker = Worker {
             to_worker,
             from_worker,
+            control_tx,
             graph,
             root: 0,
         };
-        (worker, tx, rx)
+        (worker, tx, rx, control_rx)
     }
 
     /// Process a message. In normal operation, messages are sent to the
@@ -55,9 +58,9 @@ impl Worker {
         self.handle_message(Message::Node(node));
     }
 
-    // pub fn send_timestamp(&mut self, ts: u128) {
-    //     self.from_worker.send_item(Item::make_item(Message::Timestamp(ts)));
-    // }
+    pub fn send_timestamp(&mut self, ts: u128) {
+        self.control_tx.send_item(Item::make_item(ts));
+    }
 
     fn handle_item(&mut self, item: Item<Message>) {
         let ix = match *item.deref() {
