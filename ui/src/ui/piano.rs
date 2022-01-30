@@ -15,6 +15,7 @@
 //! Piano keyboard widget.
 
 use crate::synth::NOTE;
+use core::engine::NoteEvent;
 use druid::kurbo::Rect;
 use druid::piet::RenderContext;
 use druid::widget::Widget;
@@ -30,7 +31,6 @@ use druid::MouseEvent;
 use druid::Size;
 use druid::UpdateCtx;
 use druid::{LayoutCtx, PaintCtx};
-use core::engine::NoteEvent;
 
 pub struct Piano {
     start_note: u8,

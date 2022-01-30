@@ -17,13 +17,13 @@
 use crate::module::{Buffer, Module};
 
 pub struct SmoothCtrl {
-    rate: f32,       // smoothed rate (units of updates per ms)
-    rategoal: f32,   // unsmoothed rate
+    rate: f32,        // smoothed rate (units of updates per ms)
+    rategoal: f32,    // unsmoothed rate
     t: u128,          // timestamp of current time
     last_set_t: u128, // timestamp of last param setting
-    inp: f32,        // raw, unsmoothed value
-    mid: f32,        // result of 1 pole of lowpass filtering
-    out: f32,        // result of 2 poles of lowpass filtering
+    inp: f32,         // raw, unsmoothed value
+    mid: f32,         // result of 1 pole of lowpass filtering
+    out: f32,         // result of 2 poles of lowpass filtering
 }
 
 impl SmoothCtrl {

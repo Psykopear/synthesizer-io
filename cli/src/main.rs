@@ -90,25 +90,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create bass clip
     let mut clip = Clip::new(Bars(1).to_ticks(ts, ppqn));
     let note = ClipNote::new(31., Beats(1).to_ticks(ppqn));
-    clip.add_note(note, Ticks(1));
+    clip.add_note(note, Ticks(0));
     let note = ClipNote::new(32., Beats(1).to_ticks(ppqn));
     clip.add_note(note, Beats(3).to_ticks(ppqn));
     // Now add clip to track
-    engine.add_clip_to_track(bass_track, clip, Ticks(1));
+    engine.add_clip_to_track(bass_track, clip, Ticks(0));
 
     // Create lead clip
     let mut clip = Clip::new(Bars(1).to_ticks(ts, ppqn));
+    let note = ClipNote::new(85., Beats(1).to_ticks(ppqn));
+    clip.add_note(note, Ticks(0));
     let note = ClipNote::new(86., Beats(1).to_ticks(ppqn));
     clip.add_note(note, Beats(2).to_ticks(ppqn));
-    let note = ClipNote::new(86., Beats(1).to_ticks(ppqn));
-    clip.add_note(note, Ticks(1));
     let note = ClipNote::new(73., Beats(1).to_ticks(ppqn));
     clip.add_note(note, Beats(4).to_ticks(ppqn));
     // Now add clip to track
-    engine.add_clip_to_track(lead_track, clip, Ticks(1));
+    engine.add_clip_to_track(lead_track, clip, Ticks(0));
 
     // Set loop region
-    engine.set_loop(Ticks(1), Bars(2).to_ticks(ts, ppqn));
+    engine.set_loop(Ticks(0), Bars(2).to_ticks(ts, ppqn));
     // Play
     engine.play();
     engine.run();
@@ -131,9 +131,7 @@ where
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-            let ts = Instant::now()
-                .duration_since(start_time)
-                .as_nanos();
+            let ts = Instant::now().duration_since(start_time).as_nanos();
             worker.send_timestamp(ts);
 
             let mut i = 0;

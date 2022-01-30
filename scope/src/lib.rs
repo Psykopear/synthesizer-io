@@ -21,7 +21,7 @@ use std::arch::x86::*;
 use std::arch::x86_64::*;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use fearless_simd::{AvxF32, SimdF32,};
+use fearless_simd::{AvxF32, SimdF32};
 
 /// The box beyond which the gaussian can be clipped, as a multiple of radius.
 const CLIP_FACTOR: f32 = 2.5;
@@ -175,16 +175,16 @@ impl Scope {
         //         self.as_rgba_body_avx(&mut im);
         //     }
         // } else {
-            // TODO: lut is probably faster scalar fallback
-            for i in 0..n {
-                let x = self.glow[i];
-                let r = ((x + 0.001).sqrt() * 64.0).min(255.0) as u8;
-                let g = ((x + 0.05).sqrt() * 255.0).min(255.0) as u8;
-                let b = ((x + 0.13).sqrt() * 224.0).min(255.0) as u8;
-                im[i * 4 + 0] = r;
-                im[i * 4 + 1] = g;
-                im[i * 4 + 2] = b;
-            }
+        // TODO: lut is probably faster scalar fallback
+        for i in 0..n {
+            let x = self.glow[i];
+            let r = ((x + 0.001).sqrt() * 64.0).min(255.0) as u8;
+            let g = ((x + 0.05).sqrt() * 255.0).min(255.0) as u8;
+            let b = ((x + 0.13).sqrt() * 224.0).min(255.0) as u8;
+            im[i * 4 + 0] = r;
+            im[i * 4 + 1] = g;
+            im[i * 4 + 2] = b;
+        }
         // }
         self.render_grid_lines(&mut im);
         im

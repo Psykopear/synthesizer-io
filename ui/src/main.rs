@@ -18,17 +18,17 @@ mod grid;
 mod synth;
 mod ui;
 
-use std::sync::{Arc, Mutex};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use druid::widget::{Button, Flex, Label, Widget};
-use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Handled, Target, WindowDesc};
-use midir::{MidiInput, MidiInputConnection};
-use synth::{SynthState, NOTE, PATCH, POLL};
 use core::engine::Engine;
 use core::graph::Node;
 use core::module::N_SAMPLES_PER_CHUNK;
 use core::modules;
 use core::worker::Worker;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use druid::widget::{Button, Flex, Label, Widget};
+use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Handled, Target, WindowDesc};
+use midir::{MidiInput, MidiInputConnection};
+use std::sync::{Arc, Mutex};
+use synth::{SynthState, NOTE, PATCH, POLL};
 use ui::{Patcher, Piano, Scope, JUMPER_MODE, MODULE, SAMPLES, WIRE_MODE};
 
 struct Delegate {}

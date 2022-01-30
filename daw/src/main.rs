@@ -9,7 +9,7 @@ use midir::{MidiInput, MidiInputConnection};
 
 #[derive(Clone, Data)]
 struct AppState {
-    engine: Engine
+    engine: Engine,
 }
 
 struct Delegate {}
@@ -40,8 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut engine = Engine::new(sample_rate, rx, tx);
     engine.init_monosynth();
     let engine = Arc::new(Mutex::new(engine));
-    let appstate = AppState {
-    };
+    let appstate = AppState {};
     let window = WindowDesc::new(build_ui()).title("Synthesizer IO");
     let launcher = AppLauncher::with_window(window).delegate(Delegate {});
     launcher

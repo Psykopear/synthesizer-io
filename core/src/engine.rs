@@ -110,7 +110,7 @@ impl Track {
 #[derive(Clone, PartialEq)]
 pub struct Transport {
     pub current_position: Ticks,
-    pub prev_position: Ticks,
+    pub prev_position: Option<Ticks>,
     pub start_time: Option<u128>,
 
     pub playing: bool,
@@ -128,8 +128,8 @@ impl Default for Transport {
     fn default() -> Self {
         Self {
             start_time: None,
-            current_position: Ticks(1),
-            prev_position: Ticks(1),
+            current_position: Ticks(0),
+            prev_position: None,
             playing: false,
             recording: false,
             looping: None,
@@ -161,15 +161,16 @@ impl Transport {
         if self.playing {
             // Update position
             let millis = (ts - self.start_time.unwrap()) / 1000000;
-            self.prev_position = self.current_position;
-            self.current_position = Ms(millis as f64).to_ticks(self.bpm, self.ppqn) + Ticks(1);
+            self.prev_position = Some(self.current_position);
+            self.current_position = Ms(millis as f64).to_ticks(self.bpm, self.ppqn);
+
             // if self.prev_position != self.current_position {
-            //     dbg!(self.current_position);
+            // dbg!(self.current_position);
             // }
             // dbg!(self.current_position.bars(self.time_signature, self.ppqn));
             if let Some((start, end)) = self.looping {
                 if self.current_position >= end {
-                    self.prev_position = self.current_position;
+                    self.prev_position = Some(self.current_position);
                     self.current_position = start;
                     // self.prev_position = start;
                     self.start_time = Some(ts);
@@ -225,10 +226,9 @@ impl Engine {
         loop {
             if let Some(_ts) = self.control_rx.recv_items().last() {
                 let ts = *_ts;
-                self.transport.handle(ts);
 
-                if self.transport.playing
-                    && self.transport.current_position != self.transport.prev_position
+                if self.transport.playing && self.transport.prev_position.is_none()
+                    || self.transport.current_position != self.transport.prev_position.unwrap()
                 {
                     for track in &self.tracks {
                         // let ixs = track.control.clone();
@@ -270,6 +270,7 @@ impl Engine {
                         }
                     }
                 }
+                self.transport.handle(ts);
             } else {
                 std::thread::sleep(Duration::from_millis(1));
             }
