@@ -13,14 +13,10 @@ use core::id_allocator::IdAllocator;
 use core::module::Module;
 use core::modules;
 use core::queue::{Receiver, Sender};
-
 use druid::im::vector;
 use druid::im::Vector;
 use druid::{Data, Lens};
-
 use std::sync::Arc;
-use std::time::Duration;
-
 use time_calc::Ticks;
 
 /// The interface from the application to the audio engine.
@@ -86,13 +82,7 @@ impl Engine {
                     println!("Ticks: {}", self.transport.current_position.0);
                     for note in notes {
                         println!("{}", note);
-                        self.tx.send(Message::Note(Note {
-                            ixs: track.controls().into_boxed_slice(),
-                            midi_num: note.midi,
-                            velocity: 100.,
-                            on: true,
-                            timestamp: ts,
-                        }));
+                        self.send_note_on(track.controls(), note.midi, 100., ts);
                         self.events.push_back(Note {
                             ixs: track.controls().into_boxed_slice(),
                             midi_num: note.midi,
@@ -178,17 +168,17 @@ impl Engine {
         id
     }
 
-    pub fn send_note_on(&mut self, ixs: Vec<usize>, midi_num: f32, velocity: f32) {
+    pub fn send_note_on(&self, ixs: Vec<usize>, midi_num: f32, velocity: f32, ts: u128) {
         self.tx.send(Message::Note(Note {
             ixs: ixs.into_boxed_slice(),
             midi_num,
             velocity,
             on: true,
-            timestamp: 0,
+            timestamp: ts,
         }));
     }
 
-    pub fn send_note_off(&mut self, ixs: Vec<usize>, midi_num: f32) {
+    pub fn send_note_off(&self, ixs: Vec<usize>, midi_num: f32) {
         self.tx.send(Message::Note(Note {
             ixs: ixs.into_boxed_slice(),
             midi_num,

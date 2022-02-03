@@ -1,13 +1,10 @@
 use core::engine::{Clip, ClipNote, Engine};
-use core::graph::{Note, SetParam};
 use core::module::N_SAMPLES_PER_CHUNK;
 use core::modules as m;
 use core::worker::Worker;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::collections::BTreeMap;
-use std::io::{stdin, stdout, Write};
 use std::time::Instant;
-use time_calc::{Bars, Beats, Ppqn, Ticks, TimeSig};
+use time_calc::{Bars, Beats, Ticks, TimeSig};
 
 fn make_synth(engine: &mut Engine, sample_rate: f32) -> (usize, usize, usize) {
     // Bass synth definition
