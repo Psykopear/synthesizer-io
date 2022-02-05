@@ -1,7 +1,5 @@
 //! Interface for the audio engine.
-
 use std::collections::BTreeMap;
-use std::ops::Bound::{Excluded, Included};
 use std::time::Duration;
 
 use crate::graph::{IntoBoxedSlice, Message, Node, Note, SetParam};
@@ -9,7 +7,7 @@ use crate::id_allocator::IdAllocator;
 use crate::module::Module;
 use crate::modules;
 use crate::queue::{Receiver, Sender};
-use time_calc::{Bars, Beats, Bpm, Ms, Ppqn, SampleHz, Ticks, TimeSig};
+use time_calc::{Bpm, Ms, Ppqn, SampleHz, Ticks, TimeSig};
 
 /// Type used to identify nodes in the external interface (not to be confused
 /// with nodes in the low-level graph).
