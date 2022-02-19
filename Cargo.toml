@@ -1,2 +1,4 @@
 [workspace]
-members = ["cli", "core", "daw"]
+members = ["core"]
+# members = ["cli", "core", "daw"]
+# members = ["core", "daw"]

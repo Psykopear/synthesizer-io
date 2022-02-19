@@ -1,49 +1,52 @@
 //! Interface for the audio engine.
 pub mod clip;
-mod data;
-mod track;
-mod transport;
+pub mod note;
+pub mod track;
+pub mod transport;
 
-use clip::Clip;
-use track::Track;
-use transport::Transport;
+use crate::graph::{IntoBoxedSlice, Message, Node, Note, SetParam};
+use crate::id_allocator::IdAllocator;
+use crate::module::Module;
+use crate::modules;
+use crate::queue::{Receiver, Sender};
+use crate::engine::note::ClipNote;
+use time_calc::{Bars, Ticks};
 
-use core::graph::{IntoBoxedSlice, Message, Node, Note, SetParam};
-use core::id_allocator::IdAllocator;
-use core::module::Module;
-use core::modules;
-use core::queue::{Receiver, Sender};
-use druid::im::vector;
-use druid::im::Vector;
-use druid::{Data, Lens};
-use std::sync::Arc;
-use time_calc::Ticks;
+use self::clip::Clip;
+use self::track::Track;
+use self::transport::Transport;
 
-#[derive(Data, Clone, Lens)]
-pub struct AppData {
-    engine: Arc<Engine>,
+/// Types used to identify nodes in the external interface
+/// Not to be confused with nodes in the low-level graph.
+pub type NodeId = usize;
+
+/// The interface from the application to the audio engine.
+///
+/// It doesn't do the synthesis itself; the Worker (running in a real time
+/// thread) handles that, but this module is responsible for driving
+/// that process by sending messages.
+pub struct Engine {
+    rx: Receiver<Message>,
+    tx: Sender<Message>,
+    id_alloc: IdAllocator,
+
     pub transport: Transport,
-    pub tracks: Vector<Track>,
+    tracks: Vec<Track>,
+    events: Vec<Note>,
 }
 
 impl Engine {
-    pub fn new(
-        sample_rate: f32,
-        rx: Receiver<Message>,
-        tx: Sender<Message>,
-        control_rx: Receiver<u128>,
-    ) -> Engine {
+    pub fn new(sample_rate: f32, rx: Receiver<Message>, tx: Sender<Message>) -> Engine {
         let mut id_alloc = IdAllocator::new();
         // Master track
         id_alloc.reserve(0);
         Engine {
-            events: vector![],
-            rx: Arc::new(rx),
-            tx: Arc::new(tx),
-            control_rx: Arc::new(control_rx),
-            id_alloc: Arc::new(id_alloc),
-            tracks: vector![],
+            rx,
+            tx,
+            id_alloc,
+            tracks: vec![],
             transport: Transport::new(sample_rate as f64),
+            events: vec![],
         }
     }
 
@@ -56,11 +59,19 @@ impl Engine {
             || self.transport.current_position != self.transport.prev_position.unwrap()
         {
             for track in &self.tracks {
-                if let Some(notes) = track.get_notes(&self.transport) {
+                if let Some(notes) = track.get_notes(&self.transport.current_position) {
                     for note in notes {
-                        self.send_note_on(track.controls(), note.midi, 100., ts);
-                        self.events.push_back(Note {
-                            ixs: track.controls().into_boxed_slice(),
+                        let ixs = track.control.to_vec();
+                        self.tx.send(Message::Note(Note {
+                            ixs: ixs.into_boxed_slice(),
+                            midi_num: note.midi,
+                            velocity: 100.,
+                            on: true,
+                            timestamp: ts,
+                        }));
+                        let ixs = track.control.to_vec();
+                        self.events.push(Note {
+                            ixs: ixs.into_boxed_slice(),
                             midi_num: note.midi,
                             velocity: 0.,
                             on: false,
@@ -97,14 +108,25 @@ impl Engine {
     pub fn add_track(&mut self) -> usize {
         let track_id = self.create_node(modules::Sum::new(), [], []);
         let track = Track::new(track_id);
-        self.tracks.push_back(track);
+        self.tracks.push(track);
         self.update_master();
         track_id
     }
 
-    pub fn add_clip_to_track(&mut self, track_id: usize, clip: Clip, position: Ticks) {
+    pub fn add_clip_to_track(&mut self, track_id: usize, position: Ticks) {
+        let id = self.id_alloc.alloc();
+        let clip = Clip::new(
+            id,
+            Bars(1).to_ticks(self.transport.time_signature, self.transport.ppqn),
+        );
         if let Some(track) = self.tracks.iter_mut().find(|t| t.id == track_id) {
             track.add_clip(position, clip);
+        }
+    }
+
+    pub fn add_note(&mut self, track_id: usize, clip_id: usize, note: ClipNote, position: Ticks) {
+        if let Some(track) = self.tracks.iter_mut().find(|t| t.id == track_id) {
+            track.add_note(clip_id, note, position);
         }
     }
 
@@ -112,7 +134,7 @@ impl Engine {
         &mut self,
         track_id: usize,
         in_buf_wiring: B1,
-        in_ctrl_wiring: Vector<usize>,
+        in_ctrl_wiring: Vec<usize>,
     ) {
         self.tracks
             .iter_mut()
@@ -134,7 +156,7 @@ impl Engine {
         in_buf_wiring: B1,
         in_ctrl_wiring: B2,
     ) -> usize {
-        let id = Arc::make_mut(&mut self.id_alloc).alloc();
+        let id = self.id_alloc.alloc();
         self.send_node(Node::create(
             Box::new(module),
             id,
@@ -144,13 +166,13 @@ impl Engine {
         id
     }
 
-    pub fn send_note_on(&self, ixs: Vec<usize>, midi_num: f32, velocity: f32, ts: u128) {
+    pub fn send_note_on(&self, ixs: Vec<usize>, midi_num: f32, velocity: f32) {
         self.tx.send(Message::Note(Note {
             ixs: ixs.into_boxed_slice(),
             midi_num,
             velocity,
             on: true,
-            timestamp: ts,
+            timestamp: 0,
         }));
     }
 
@@ -169,7 +191,7 @@ impl Engine {
     }
 
     pub fn remove_track(&mut self, ix: usize) {
-        self.tracks.remove(
+        self.tracks.swap_remove(
             self.tracks
                 .iter()
                 .position(|x| x.id == ix)

@@ -9,3 +9,6 @@ edition = "2021"
 [dependencies]
 lazy_static = "1.0"
 time_calc = "0.13.0"
+
+[dev-dependencies]
+cpal = { version = "0.13.4", features = ["jack"] }

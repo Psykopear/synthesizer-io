@@ -108,7 +108,7 @@ pub struct SetParam {
 }
 
 /// A struct that represents a note on/off event
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Note {
     pub ixs: Box<[usize]>, // list of node ix's affected by this note
     pub midi_num: f32,     // 69.0 = A4 (440Hz)
