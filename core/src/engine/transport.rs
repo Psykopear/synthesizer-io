@@ -28,8 +28,8 @@ impl Default for Transport {
             looping: None,
             bpm: 120.,
             sample_rate: 48_000.0,
+            ppqn: 32,
             // ppqn: 1920,
-            ppqn: 64,
             time_signature: TimeSig { top: 4, bottom: 4 },
         }
     }

@@ -65,7 +65,7 @@ impl Engine {
                         self.tx.send(Message::Note(Note {
                             ixs: ixs.into_boxed_slice(),
                             midi_num: note.midi,
-                            velocity: 100.,
+                            velocity: note.vel as f32,
                             on: true,
                             timestamp: ts,
                         }));

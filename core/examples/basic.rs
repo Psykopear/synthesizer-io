@@ -73,7 +73,7 @@ fn main() {
     engine.play();
     engine.set_loop(
         Ticks(0),
-        Bars(1).to_ticks(engine.transport.time_signature, engine.transport.ppqn),
+        Bars(2).to_ticks(engine.transport.time_signature, engine.transport.ppqn),
     );
     // Bass synth
     let bass_track = engine.add_track();
@@ -89,7 +89,7 @@ fn main() {
         clip,
         ClipNote {
             dur: Beats(2).to_ticks(engine.transport.ppqn),
-            midi: 42.,
+            midi: 31.,
             vel: 100,
         },
         Ticks(0),
@@ -99,17 +99,28 @@ fn main() {
         clip,
         ClipNote {
             dur: Beats(1).to_ticks(engine.transport.ppqn),
-            midi: 41.,
+            midi: 30.,
+            vel: 50,
+        },
+        Beats(1).to_ticks(engine.transport.ppqn),
+    );
+    engine.add_note(
+        bass_track,
+        clip,
+        ClipNote {
+            dur: Beats(2).to_ticks(engine.transport.ppqn),
+            midi: 33.,
             vel: 100,
         },
-        Beats(2).to_ticks(engine.transport.ppqn),
+        Bars(1).to_ticks(engine.transport.time_signature, engine.transport.ppqn),
     );
 
     loop {
-        for ts in control_rx.recv_items() {
-            engine.run_step(*ts);
+        for ts in control_rx.recv() {
+            engine.run_step(ts);
         }
-        std::thread::sleep(Duration::from_millis(1));
+        // Add a small sleep so we don't fill up an entire CPU busy waiting.
+        std::thread::sleep(Duration::from_nanos(1));
     }
 }
 
