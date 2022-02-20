@@ -3,7 +3,7 @@ use core::module::N_SAMPLES_PER_CHUNK;
 use core::modules as m;
 use core::worker::Worker;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::time::Instant;
+use std::time::{Instant, Duration};
 use time_calc::{Bars, Beats, Ticks, TimeSig};
 
 /// A function to build a basic synth and return its controlling nodes
@@ -73,7 +73,7 @@ fn main() {
     engine.play();
     engine.set_loop(
         Ticks(0),
-        Bars(2).to_ticks(engine.transport.time_signature, engine.transport.ppqn),
+        Bars(1).to_ticks(engine.transport.time_signature, engine.transport.ppqn),
     );
     // Bass synth
     let bass_track = engine.add_track();
@@ -84,6 +84,33 @@ fn main() {
     // Create an empty clip
     let clip = engine.add_clip_to_track(bass_track, Ticks(0));
     // Add some notes to the clip
+    engine.add_note(
+        bass_track,
+        clip,
+        ClipNote {
+            dur: Beats(2).to_ticks(engine.transport.ppqn),
+            midi: 42.,
+            vel: 100,
+        },
+        Ticks(0),
+    );
+    engine.add_note(
+        bass_track,
+        clip,
+        ClipNote {
+            dur: Beats(1).to_ticks(engine.transport.ppqn),
+            midi: 41.,
+            vel: 100,
+        },
+        Beats(2).to_ticks(engine.transport.ppqn),
+    );
+
+    loop {
+        for ts in control_rx.recv_items() {
+            engine.run_step(*ts);
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
 }
 
 pub fn run<T>(
@@ -100,12 +127,12 @@ where
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-            let ts = Instant::now().duration_since(start_time).as_nanos();
             let mut i = 0;
             while i < data.len() {
                 let ts = Instant::now()
                     .saturating_duration_since(start_time)
                     .as_nanos();
+                worker.send_timestamp(ts);
                 let buf = worker.work(ts)[0].get();
                 for j in 0..N_SAMPLES_PER_CHUNK {
                     let value: T = cpal::Sample::from::<f32>(&buf[j]);

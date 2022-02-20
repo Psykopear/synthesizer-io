@@ -12,7 +12,7 @@ use crate::queue::{Receiver, Sender};
 use crate::engine::note::ClipNote;
 use time_calc::{Bars, Ticks};
 
-use self::clip::Clip;
+use self::clip::{Clip, ClipId};
 use self::track::Track;
 use self::transport::Transport;
 
@@ -113,7 +113,7 @@ impl Engine {
         track_id
     }
 
-    pub fn add_clip_to_track(&mut self, track_id: usize, position: Ticks) {
+    pub fn add_clip_to_track(&mut self, track_id: usize, position: Ticks) -> ClipId {
         let id = self.id_alloc.alloc();
         let clip = Clip::new(
             id,
@@ -122,6 +122,7 @@ impl Engine {
         if let Some(track) = self.tracks.iter_mut().find(|t| t.id == track_id) {
             track.add_clip(position, clip);
         }
+        id
     }
 
     pub fn add_note(&mut self, track_id: usize, clip_id: usize, note: ClipNote, position: Ticks) {

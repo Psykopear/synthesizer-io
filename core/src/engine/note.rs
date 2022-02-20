@@ -6,7 +6,7 @@ pub type ClipNoteId = usize;
 #[derive(Clone, Debug)]
 pub struct ClipNote {
     // An id that should be unique inside a clip
-    pub id: ClipNoteId,
+    // pub id: ClipNoteId,
     // Frequency of the note
     pub midi: f32,
     // Duration in Ticks
@@ -16,7 +16,7 @@ pub struct ClipNote {
 }
 
 impl ClipNote {
-    pub fn new(id: ClipNoteId, midi: f32, dur: Ticks, vel: u8) -> Self {
-        Self { id, midi, dur, vel }
+    pub fn new(midi: f32, dur: Ticks, vel: u8) -> Self {
+        Self { midi, dur, vel }
     }
 }
