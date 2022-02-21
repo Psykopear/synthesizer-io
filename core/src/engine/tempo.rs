@@ -1,7 +1,7 @@
-use time_calc::{Ticks, TimeSig, Bpm, Ppqn, SampleHz, Ms};
+use time_calc::{Bars, Beats, Bpm, Ms, Ppqn, SampleHz, Ticks, TimeSig};
 
 #[derive(Clone, PartialEq)]
-pub struct Transport {
+pub struct Tempo {
     pub current_position: Ticks,
     pub prev_position: Option<Ticks>,
     pub start_time: Option<u128>,
@@ -17,7 +17,7 @@ pub struct Transport {
     pub sample_rate: SampleHz,
 }
 
-impl Default for Transport {
+impl Default for Tempo {
     fn default() -> Self {
         Self {
             start_time: None,
@@ -38,11 +38,11 @@ impl Default for Transport {
     }
 }
 
-impl Transport {
+impl Tempo {
     pub fn new(sample_rate: SampleHz) -> Self {
-        let mut transport = Self::default();
-        transport.sample_rate = sample_rate;
-        transport
+        let mut tempo = Self::default();
+        tempo.sample_rate = sample_rate;
+        tempo
     }
 
     pub fn handle(&mut self, ts: u128) {
@@ -67,5 +67,18 @@ impl Transport {
                 }
             }
         }
+    }
+
+    // Utilities functions for convertion to ticks
+    pub fn beats(&self, val: i64) -> Ticks {
+        Beats(val).to_ticks(self.ppqn)
+    }
+
+    pub fn bars(&self, val: i64) -> Ticks {
+        Bars(val).to_ticks(self.time_signature, self.ppqn)
+    }
+
+    pub fn ticks(&self, val: i64) -> Ticks {
+        Ticks(val)
     }
 }

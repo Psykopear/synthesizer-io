@@ -4,11 +4,10 @@ use core::modules as m;
 use core::worker::Worker;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::time::{Instant, Duration};
-use time_calc::{Bars, Beats, Ticks, TimeSig};
 
 /// A function to build a basic synth and return its controlling nodes
 fn make_synth(engine: &mut Engine) -> (usize, usize, usize) {
-    let sample_rate = engine.transport.sample_rate as f32;
+    let sample_rate = engine.tempo.sample_rate as f32;
     // Synth definition
     // Note control
     let pitch = engine.create_node(m::NotePitch::new(), [], []);
@@ -72,8 +71,8 @@ fn main() {
     engine.init();
     engine.play();
     engine.set_loop(
-        Ticks(0),
-        Bars(2).to_ticks(engine.transport.time_signature, engine.transport.ppqn),
+        engine.tempo.ticks(0),
+        engine.tempo.bars(2)
     );
     // Bass synth
     let bass_track = engine.add_track();
@@ -82,37 +81,37 @@ fn main() {
     // Add device to track
     engine.set_track_node(bass_track, [(bass_synth, 0)], bass_control.clone());
     // Create an empty clip
-    let clip = engine.add_clip_to_track(bass_track, Ticks(0));
+    let clip = engine.add_clip_to_track(bass_track, engine.tempo.ticks(0));
     // Add some notes to the clip
     engine.add_note(
         bass_track,
         clip,
         ClipNote {
-            dur: Beats(2).to_ticks(engine.transport.ppqn),
+            dur: engine.tempo.beats(2),
             midi: 31.,
             vel: 100,
         },
-        Ticks(0),
+        engine.tempo.ticks(0),
     );
     engine.add_note(
         bass_track,
         clip,
         ClipNote {
-            dur: Beats(1).to_ticks(engine.transport.ppqn),
+            dur: engine.tempo.beats(1),
             midi: 30.,
             vel: 50,
         },
-        Beats(1).to_ticks(engine.transport.ppqn),
+        engine.tempo.beats(1)
     );
     engine.add_note(
         bass_track,
         clip,
         ClipNote {
-            dur: Beats(2).to_ticks(engine.transport.ppqn),
+            dur: engine.tempo.beats(2),
             midi: 33.,
             vel: 100,
         },
-        Bars(1).to_ticks(engine.transport.time_signature, engine.transport.ppqn),
+        engine.tempo.bars(1)
     );
 
     loop {

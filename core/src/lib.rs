@@ -24,3 +24,5 @@ pub mod module;
 pub mod modules;
 pub mod queue;
 pub mod worker;
+// Reexport time_calc too
+pub use time_calc;

@@ -2,7 +2,7 @@
 pub mod clip;
 pub mod note;
 pub mod track;
-pub mod transport;
+pub mod tempo;
 
 use crate::graph::{IntoBoxedSlice, Message, Node, Note, SetParam};
 use crate::id_allocator::IdAllocator;
@@ -14,7 +14,7 @@ use time_calc::{Bars, Ticks};
 
 use self::clip::{Clip, ClipId};
 use self::track::Track;
-use self::transport::Transport;
+use self::tempo::Tempo;
 
 /// Types used to identify nodes in the external interface
 /// Not to be confused with nodes in the low-level graph.
@@ -30,7 +30,7 @@ pub struct Engine {
     tx: Sender<Message>,
     id_alloc: IdAllocator,
 
-    pub transport: Transport,
+    pub tempo: Tempo,
     tracks: Vec<Track>,
     events: Vec<Note>,
 }
@@ -45,21 +45,21 @@ impl Engine {
             tx,
             id_alloc,
             tracks: vec![],
-            transport: Transport::new(sample_rate as f64),
+            tempo: Tempo::new(sample_rate as f64),
             events: vec![],
         }
     }
 
     pub fn run_step(&mut self, ts: u128) {
-        if !self.transport.playing {
+        if !self.tempo.playing {
             return;
         };
 
-        if self.transport.prev_position.is_none()
-            || self.transport.current_position != self.transport.prev_position.unwrap()
+        if self.tempo.prev_position.is_none()
+            || self.tempo.current_position != self.tempo.prev_position.unwrap()
         {
             for track in &self.tracks {
-                if let Some(notes) = track.get_notes(&self.transport.current_position) {
+                if let Some(notes) = track.get_notes(&self.tempo.current_position) {
                     for note in notes {
                         let ixs = track.control.to_vec();
                         self.tx.send(Message::Note(Note {
@@ -76,7 +76,7 @@ impl Engine {
                             velocity: 0.,
                             on: false,
                             timestamp: ts
-                                + (note.dur.to_ms(self.transport.bpm, self.transport.ppqn).0)
+                                + (note.dur.to_ms(self.tempo.bpm, self.tempo.ppqn).0)
                                     as u128,
                         });
                     }
@@ -94,15 +94,15 @@ impl Engine {
                 }
             }
         }
-        self.transport.handle(ts);
+        self.tempo.handle(ts);
     }
 
     pub fn set_loop(&mut self, start: Ticks, end: Ticks) {
-        self.transport.looping = Some((start, end));
+        self.tempo.looping = Some((start, end));
     }
 
     pub fn play(&mut self) {
-        self.transport.playing = true;
+        self.tempo.playing = true;
     }
 
     pub fn add_track(&mut self) -> usize {
@@ -117,7 +117,7 @@ impl Engine {
         let id = self.id_alloc.alloc();
         let clip = Clip::new(
             id,
-            Bars(1).to_ticks(self.transport.time_signature, self.transport.ppqn),
+            Bars(1).to_ticks(self.tempo.time_signature, self.tempo.ppqn),
         );
         if let Some(track) = self.tracks.iter_mut().find(|t| t.id == track_id) {
             track.add_clip(position, clip);
