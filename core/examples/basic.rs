@@ -141,12 +141,12 @@ where
             let mut i = 0;
             while i < data.len() {
                 let ts = Instant::now()
-                    .saturating_duration_since(start_time)
+                    .duration_since(start_time)
                     .as_nanos();
                 worker.send_timestamp(ts);
                 let buf = worker.work(ts)[0].get();
                 for j in 0..N_SAMPLES_PER_CHUNK {
-                    let value: T = cpal::Sample::from::<f32>(&buf[j]);
+                    let value = T::from::<f32>(&buf[j]);
                     data[i + j * 2] = value;
                     data[i + j * 2 + 1] = value;
                 }

@@ -28,6 +28,9 @@ impl Default for Transport {
             looping: None,
             bpm: 120.,
             sample_rate: 48_000.0,
+            // Part (or ticks) Per Quarter Notes, ppqn
+            // Zrythm uses 960 here, 1920 seems to be used by ardour,
+            // the point is to have a number with a lot of dividends
             ppqn: 32,
             // ppqn: 1920,
             time_signature: TimeSig { top: 4, bottom: 4 },
