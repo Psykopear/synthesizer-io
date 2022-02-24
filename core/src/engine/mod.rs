@@ -1,24 +1,22 @@
 //! Interface for the audio engine.
 pub mod clip;
 pub mod note;
-pub mod track;
 pub mod tempo;
+pub mod track;
 
+use std::time::{Duration, Instant};
+
+use crate::engine::note::ClipNote;
 use crate::graph::{IntoBoxedSlice, Message, Node, Note, SetParam};
 use crate::id_allocator::IdAllocator;
 use crate::module::Module;
 use crate::modules;
 use crate::queue::{Receiver, Sender};
-use crate::engine::note::ClipNote;
 use time_calc::{Bars, Ticks};
 
 use self::clip::{Clip, ClipId};
-use self::track::Track;
 use self::tempo::Tempo;
-
-/// Types used to identify nodes in the external interface
-/// Not to be confused with nodes in the low-level graph.
-pub type NodeId = usize;
+use self::track::{Track, TrackId};
 
 /// The interface from the application to the audio engine.
 ///
@@ -28,6 +26,8 @@ pub type NodeId = usize;
 pub struct Engine {
     rx: Receiver<Message>,
     tx: Sender<Message>,
+    control_rx: Receiver<u128>,
+
     id_alloc: IdAllocator,
 
     pub tempo: Tempo,
@@ -36,17 +36,45 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(sample_rate: f32, rx: Receiver<Message>, tx: Sender<Message>) -> Engine {
+    pub fn new(
+        sample_rate: f32,
+        rx: Receiver<Message>,
+        tx: Sender<Message>,
+        control_rx: Receiver<u128>,
+    ) -> Engine {
         let mut id_alloc = IdAllocator::new();
         // Master track
         id_alloc.reserve(0);
         Engine {
             rx,
             tx,
+            control_rx,
             id_alloc,
-            tracks: vec![],
             tempo: Tempo::new(sample_rate as f64),
+            tracks: vec![],
             events: vec![],
+        }
+    }
+
+    pub fn run(&mut self) {
+        loop {
+            let mut i = 0;
+            for ts in self.control_rx.recv_items() {
+                self.run_step(*ts);
+                i += 1;
+            }
+            if i > 1 {
+                println!("{} steps in one, not good!", i);
+            }
+            for _message in self.rx.recv_items() {
+                println!("Received message");
+            }
+            std::thread::yield_now();
+            // Sooo, if we sleep for 1ns we avoid using the cpu at 100%
+            // It's not cheap, but we get the best accuracy without having to wait for events from
+            // a queue, which might be better if we can do that without allocations in the realtime
+            // thread
+            // std::thread::sleep(Duration::from_nanos(1));
         }
     }
 
@@ -76,8 +104,7 @@ impl Engine {
                             velocity: 0.,
                             on: false,
                             timestamp: ts
-                                + (note.dur.to_ms(self.tempo.bpm, self.tempo.ppqn).0)
-                                    as u128,
+                                + (note.dur.to_ms(self.tempo.bpm, self.tempo.ppqn).0) as u128,
                         });
                     }
                 }
@@ -105,7 +132,7 @@ impl Engine {
         self.tempo.playing = true;
     }
 
-    pub fn add_track(&mut self) -> usize {
+    pub fn add_track(&mut self) -> TrackId {
         let track_id = self.create_node(modules::Sum::new(), [], []);
         let track = Track::new(track_id);
         self.tracks.push(track);
@@ -113,7 +140,7 @@ impl Engine {
         track_id
     }
 
-    pub fn add_clip_to_track(&mut self, track_id: usize, position: Ticks) -> ClipId {
+    pub fn add_clip_to_track(&mut self, track_id: TrackId, position: Ticks) -> ClipId {
         let id = self.id_alloc.alloc();
         let clip = Clip::new(
             id,
@@ -125,7 +152,13 @@ impl Engine {
         id
     }
 
-    pub fn add_note(&mut self, track_id: usize, clip_id: usize, note: ClipNote, position: Ticks) {
+    pub fn add_note(
+        &mut self,
+        track_id: TrackId,
+        clip_id: ClipId,
+        note: ClipNote,
+        position: Ticks,
+    ) {
         if let Some(track) = self.tracks.iter_mut().find(|t| t.id == track_id) {
             track.add_note(clip_id, note, position);
         }
@@ -133,7 +166,7 @@ impl Engine {
 
     pub fn set_track_node<B1: IntoBoxedSlice<(usize, usize)>>(
         &mut self,
-        track_id: usize,
+        track_id: TrackId,
         in_buf_wiring: B1,
         in_ctrl_wiring: Vec<usize>,
     ) {
@@ -191,7 +224,7 @@ impl Engine {
         self.send(Message::SetParam(param));
     }
 
-    pub fn remove_track(&mut self, ix: usize) {
+    pub fn remove_track(&mut self, ix: TrackId) {
         self.tracks.swap_remove(
             self.tracks
                 .iter()

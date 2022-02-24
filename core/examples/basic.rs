@@ -3,7 +3,7 @@ use core::module::N_SAMPLES_PER_CHUNK;
 use core::modules as m;
 use core::worker::Worker;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 /// A function to build a basic synth and return its controlling nodes
 fn make_synth(engine: &mut Engine) -> (usize, usize, usize) {
@@ -67,13 +67,10 @@ fn main() {
     stream.play().unwrap();
 
     // Initialize the audio engine
-    let mut engine = Engine::new(sample_rate, rx, tx);
+    let mut engine = Engine::new(sample_rate, rx, tx, control_rx);
     engine.init();
     engine.play();
-    engine.set_loop(
-        engine.tempo.ticks(0),
-        engine.tempo.bars(2)
-    );
+    engine.set_loop(engine.tempo.ticks(0), engine.tempo.bars(2));
     // Bass synth
     let bass_track = engine.add_track();
     let (bass_synth, bass_pitch, bass_adsr) = make_synth(&mut engine);
@@ -83,44 +80,25 @@ fn main() {
     // Create an empty clip
     let clip = engine.add_clip_to_track(bass_track, engine.tempo.ticks(0));
     // Add some notes to the clip
-    engine.add_note(
-        bass_track,
-        clip,
-        ClipNote {
-            dur: engine.tempo.beats(2),
-            midi: 31.,
-            vel: 100,
-        },
-        engine.tempo.ticks(0),
-    );
-    engine.add_note(
-        bass_track,
-        clip,
-        ClipNote {
-            dur: engine.tempo.beats(1),
-            midi: 30.,
-            vel: 50,
-        },
-        engine.tempo.beats(1)
-    );
-    engine.add_note(
-        bass_track,
-        clip,
-        ClipNote {
-            dur: engine.tempo.beats(2),
-            midi: 33.,
-            vel: 100,
-        },
-        engine.tempo.bars(1)
-    );
-
-    loop {
-        for ts in control_rx.recv() {
-            engine.run_step(ts);
-        }
-        // Add a small sleep so we don't fill up an entire CPU busy waiting.
-        std::thread::sleep(Duration::from_nanos(1));
-    }
+    let note = ClipNote {
+        dur: engine.tempo.beats(2),
+        midi: 31.,
+        vel: 100,
+    };
+    engine.add_note(bass_track, clip, note, engine.tempo.ticks(0));
+    let note = ClipNote {
+        dur: engine.tempo.beats(1),
+        midi: 30.,
+        vel: 50,
+    };
+    engine.add_note(bass_track, clip, note, engine.tempo.beats(1));
+    let note = ClipNote {
+        dur: engine.tempo.beats(2),
+        midi: 33.,
+        vel: 100,
+    };
+    engine.add_note(bass_track, clip, note, engine.tempo.bars(1));
+    engine.run();
 }
 
 pub fn run<T>(
@@ -136,12 +114,11 @@ where
 
     let stream = device.build_output_stream(
         config,
-        move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+        move |data: &mut [T], _info: &cpal::OutputCallbackInfo| {
             let mut i = 0;
+            // let ts = info.timestamp().callback.nanos;
             while i < data.len() {
-                let ts = Instant::now()
-                    .duration_since(start_time)
-                    .as_nanos();
+                let ts = Instant::now().duration_since(start_time).as_nanos();
                 worker.send_timestamp(ts);
                 let buf = worker.work(ts)[0].get();
                 for j in 0..N_SAMPLES_PER_CHUNK {

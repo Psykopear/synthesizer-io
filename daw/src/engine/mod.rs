@@ -17,7 +17,7 @@ use druid::im::vector;
 use druid::im::Vector;
 use druid::{Data, Lens};
 use std::sync::Arc;
-use time_calc::Ticks;
+use core::time_calc::Ticks;
 
 #[derive(Data, Clone, Lens)]
 pub struct AppData {

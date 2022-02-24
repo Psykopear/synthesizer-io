@@ -442,7 +442,6 @@ dependencies = [
  "core",
  "cpal",
  "druid",
- "time_calc",
 ]
 
 [[package]]
