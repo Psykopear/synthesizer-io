@@ -24,9 +24,9 @@ impl Data for Tempo {
             && self.current_bar == other.current_bar
             && self.current_beat == other.current_beat
             && self.start_time == other.start_time
-            // && self.play == other.play
-            // && self.rec == other.rec
-            // && self.looping == other.looping
+            && self.play == other.play
+            && self.rec == other.rec
+            && self.looping == other.looping
             && self.bpm == other.bpm
             && self.time_signature.top == other.time_signature.top
             && self.time_signature.bottom == other.time_signature.bottom

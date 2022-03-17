@@ -45,28 +45,35 @@ impl Tempo {
         tempo
     }
 
-    pub fn handle(&mut self, ts: u128) {
-        if self.playing && self.start_time.is_none() {
+    pub fn step(&mut self, ts: u128) {
+        if !self.playing {
+            if self.start_time.is_some() {
+                self.start_time = None;
+            }
+            return;
+        } else if self.start_time.is_none() {
             self.start_time = Some(ts);
-        }
-        // Set start_time if just stopped
-        if !self.playing && self.start_time.is_some() {
-            self.start_time = None;
-        }
-        if self.playing {
-            // Update position
-            let millis = (ts - self.start_time.unwrap()) / 1000000;
-            self.prev_position = Some(self.current_position);
-            self.current_position = Ms(millis as f64).to_ticks(self.bpm, self.ppqn);
+        };
+        // Update position
+        let millis = (ts - self.start_time.unwrap()) / 1000000;
+        self.prev_position = Some(self.current_position);
+        self.current_position = Ms(millis as f64).to_ticks(self.bpm, self.ppqn);
 
-            if let Some((start, end)) = self.looping {
-                if self.current_position >= end {
-                    self.prev_position = Some(self.current_position);
-                    self.current_position = start;
-                    self.start_time = Some(ts);
-                }
+        if let Some((start, end)) = self.looping {
+            if self.current_position >= end {
+                self.prev_position = Some(self.current_position);
+                self.current_position = start;
+                self.start_time = Some(ts);
             }
         }
+    }
+
+    pub fn current_bars(&self) -> f64 {
+        self.current_position.bars(self.time_signature, self.ppqn)
+    }
+
+    pub fn current_beats(&self) -> f64 {
+        self.current_position.beats(self.ppqn)
     }
 
     // Utilities functions for convertion to ticks

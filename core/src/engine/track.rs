@@ -45,8 +45,10 @@ impl Track {
         return None;
     }
 
-    pub fn get_notes(&self, cur_position: &Ticks) -> Option<&Vec<ClipNote>> {
-        self.get_active_clip(cur_position)
-            .map_or(None, |clip| clip.get_notes(&cur_position))
+    pub fn get_notes(&self, last_position: &Ticks, cur_position: &Ticks) -> Vec<&ClipNote> {
+        (last_position.0..cur_position.0).map(|position| {
+            self.get_active_clip(&Ticks(position))
+                .map_or(None, |clip| clip.get_notes(&Ticks(position)))
+        }).flatten().flatten().collect()
     }
 }

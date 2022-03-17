@@ -11,7 +11,7 @@ use crate::graph::{IntoBoxedSlice, Message, Node, Note, SetParam};
 use crate::id_allocator::IdAllocator;
 use crate::module::Module;
 use crate::modules;
-use crate::queue::{Receiver, Sender};
+use crate::queue::{Queue, Receiver, Sender};
 use time_calc::{Bars, Ticks};
 
 use self::clip::{Clip, ClipId};
@@ -26,8 +26,9 @@ use self::track::{Track, TrackId};
 pub struct Engine {
     rx: Receiver<Message>,
     tx: Sender<Message>,
-    control_rx: Receiver<u128>,
 
+    ui_rx: Receiver<Message>,
+    ui_tx: Sender<Message>,
     id_alloc: IdAllocator,
 
     pub tempo: Tempo,
@@ -40,73 +41,85 @@ impl Engine {
         sample_rate: f32,
         rx: Receiver<Message>,
         tx: Sender<Message>,
-        control_rx: Receiver<u128>,
-    ) -> Engine {
+    ) -> (Engine, Sender<Message>, Receiver<Message>) {
         let mut id_alloc = IdAllocator::new();
         // Master track
         id_alloc.reserve(0);
-        Engine {
-            rx,
-            tx,
-            control_rx,
-            id_alloc,
-            tempo: Tempo::new(sample_rate as f64),
-            tracks: vec![],
-            events: vec![],
-        }
+        // UI Communication
+        let (sender, ui_rx) = Queue::new();
+        let (ui_tx, receiver) = Queue::new();
+        (
+            Engine {
+                rx,
+                tx,
+                ui_rx,
+                ui_tx,
+                id_alloc,
+                tempo: Tempo::new(sample_rate as f64),
+                tracks: vec![],
+                events: vec![],
+            },
+            sender,
+            receiver,
+        )
     }
 
-    pub fn run(&mut self) {
-        loop {
-            let mut i = 0;
-            for ts in self.control_rx.recv_items() {
-                self.run_step(*ts);
-                i += 1;
-            }
-            if i > 1 {
-                println!("{} steps in one, not good!", i);
-            }
-            for _message in self.rx.recv_items() {
-                println!("Received message");
-            }
-            std::thread::yield_now();
-            // Sooo, if we sleep for 1ns we avoid using the cpu at 100%
-            // It's not cheap, but we get the best accuracy without having to wait for events from
-            // a queue, which might be better if we can do that without allocations in the realtime
-            // thread
-            // std::thread::sleep(Duration::from_nanos(1));
-        }
-    }
-
-    pub fn run_step(&mut self, ts: u128) {
-        if !self.tempo.playing {
+    pub fn run_step(&mut self) {
+        // We might have received 0 or more messages.
+        // If we received 0 messages, we stop here.
+        // If we receive more than one, we only consider the latest.
+        let ts = self
+            .rx
+            .recv_items()
+            .filter_map(|m| {
+                if let Message::Timestamp(t) = *m {
+                    Some(t)
+                } else {
+                    None
+                }
+            })
+            .last();
+        if ts.is_none() {
             return;
+        }
+        let ts = ts.unwrap();
+
+        if !self.tempo.playing {
+            if self.tempo.start_time.is_some() {
+                self.tempo.start_time = None;
+            }
+            return;
+        } else if self.tempo.start_time.is_none() {
+            self.tempo.start_time = Some(ts);
         };
+
+        self.ui_tx.send(Message::Timestamp(ts));
 
         if self.tempo.prev_position.is_none()
             || self.tempo.current_position != self.tempo.prev_position.unwrap()
         {
             for track in &self.tracks {
-                if let Some(notes) = track.get_notes(&self.tempo.current_position) {
-                    for note in notes {
-                        let ixs = track.control.to_vec();
-                        self.tx.send(Message::Note(Note {
-                            ixs: ixs.into_boxed_slice(),
-                            midi_num: note.midi,
-                            velocity: note.vel as f32,
-                            on: true,
-                            timestamp: ts,
-                        }));
-                        let ixs = track.control.to_vec();
-                        self.events.push(Note {
-                            ixs: ixs.into_boxed_slice(),
-                            midi_num: note.midi,
-                            velocity: 0.,
-                            on: false,
-                            timestamp: ts
-                                + (note.dur.to_ms(self.tempo.bpm, self.tempo.ppqn).0) as u128,
-                        });
-                    }
+                for note in track.get_notes(
+                    &self.tempo.prev_position.unwrap_or(Ticks(0)),
+                    &self.tempo.current_position,
+                ) {
+                    println!("Got note {}", note.midi);
+                    let ixs = track.control.to_vec();
+                    self.tx.send(Message::Note(Note {
+                        ixs: ixs.into_boxed_slice(),
+                        midi_num: note.midi,
+                        velocity: note.vel as f32,
+                        on: true,
+                        timestamp: ts,
+                    }));
+                    let ixs = track.control.to_vec();
+                    self.events.push(Note {
+                        ixs: ixs.into_boxed_slice(),
+                        midi_num: note.midi,
+                        velocity: 0.,
+                        on: false,
+                        timestamp: ts + (note.dur.to_ms(self.tempo.bpm, self.tempo.ppqn).0) as u128,
+                    });
                 }
             }
 
@@ -121,15 +134,19 @@ impl Engine {
                 }
             }
         }
-        self.tempo.handle(ts);
+        self.tempo.step(ts);
     }
 
     pub fn set_loop(&mut self, start: Ticks, end: Ticks) {
         self.tempo.looping = Some((start, end));
     }
 
-    pub fn play(&mut self) {
+    pub fn set_play(&mut self) {
         self.tempo.playing = true;
+    }
+
+    pub fn set_pause(&mut self) {
+        self.tempo.playing = false;
     }
 
     pub fn add_track(&mut self) -> TrackId {
@@ -246,6 +263,7 @@ impl Engine {
     }
 
     fn update_master(&mut self) {
+        // Allocations
         let master_track = Box::new(modules::Sum::new());
         let buf_wiring: Vec<_> = self.tracks.iter().map(|n| (n.id, 0)).collect();
         self.send_node(Node::create(master_track, 0, buf_wiring, []));

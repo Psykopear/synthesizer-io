@@ -74,17 +74,19 @@ where
 {
     let start_time = Instant::now();
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
+    let mut check = 0;
 
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-            let ts = Instant::now().duration_since(start_time).as_nanos();
-            worker.send_timestamp(ts);
+            if check == 0 {
+                let ts = Instant::now().duration_since(start_time).as_nanos();
+                worker.send_timestamp(ts);
+            }
+            check = (check + 1) % 4;
             let mut i = 0;
             while i < data.len() {
-                let ts = Instant::now()
-                    .duration_since(start_time)
-                    .as_nanos();
+                let ts = Instant::now().duration_since(start_time).as_nanos();
                 worker.send_timestamp(ts);
                 let buf = worker.work(ts)[0].get();
                 for j in 0..N_SAMPLES_PER_CHUNK {

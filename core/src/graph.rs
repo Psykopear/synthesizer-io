@@ -14,6 +14,7 @@
 
 //! A graph runner that avoids all blocking operations, suitable for realtime threads.
 
+use std::iter::Map;
 use std::mem;
 use std::ops::DerefMut;
 use std::ptr;
@@ -120,6 +121,15 @@ pub struct Note {
 pub trait IntoBoxedSlice<T> {
     fn into_box(self) -> Box<[T]>;
 }
+
+// impl<T, L> IntoBoxedSlice<T> for L
+// where
+//     L: Iterator<Item = T>,
+// {
+//     fn into_box(self) -> Box<[T]> {
+//         Box::new(self.collect())
+//     }
+// }
 
 impl<T> IntoBoxedSlice<T> for Vec<T> {
     fn into_box(self) -> Box<[T]> {
