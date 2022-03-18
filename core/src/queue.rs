@@ -14,6 +14,7 @@
 
 //! A lock-free queue suitable for real-time audio threads.
 
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::ptr;
 use std::ptr::NonNull;
@@ -57,15 +58,12 @@ impl<T> Item<T> {
     /// Create an `Item` for the given value. This function allocates and is
     /// very similar to `Box::new()`.
     pub fn make_item(payload: T) -> Item<T> {
-        let ptr = Box::into_raw(Box::new(Node {
+        let node = Box::new(Node {
             payload,
             child: None,
-        }));
-        // TODO: use Box::into_raw_non_null when it stabilizes
-        unsafe {
-            Item {
-                ptr: NonNull::new_unchecked(ptr),
-            }
+        });
+        Item {
+            ptr: NonNull::from(Box::leak(node)),
         }
     }
 }
@@ -116,6 +114,8 @@ unsafe impl<T: Sync> Sync for Sender<T> {}
 /// The sender endpoint for a lock-free queue.
 pub struct Sender<T> {
     queue: Arc<Queue<T>>,
+    // TODO: is this phantom data necessary?
+    _marker: PhantomData<*const T>,
 }
 
 unsafe impl<T: Send> Send for Receiver<T> {}
@@ -124,12 +124,15 @@ unsafe impl<T: Send> Send for Receiver<T> {}
 /// The receiver endpoint for a lock-free queue.
 pub struct Receiver<T> {
     queue: Arc<Queue<T>>,
+    // TODO: is this phantom data necessary?
+    _marker: PhantomData<*const T>,
 }
 
 impl<T: Send + 'static> Clone for Sender<T> {
     fn clone(&self) -> Sender<T> {
         Sender {
             queue: self.queue.clone(),
+            _marker: Default::default(),
         }
     }
 }
@@ -172,8 +175,12 @@ impl<T: Send + 'static> Queue<T> {
         (
             Sender {
                 queue: queue.clone(),
+                _marker: Default::default(),
             },
-            Receiver { queue },
+            Receiver {
+                queue,
+                _marker: Default::default(),
+            },
         )
     }
 

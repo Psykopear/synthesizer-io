@@ -56,9 +56,8 @@ impl Worker {
         self.handle_message(Message::Node(node));
     }
 
-    pub fn send_timestamp(&mut self, ts: u128) {
-        self.from_worker
-            .send_item(Item::make_item(Message::Timestamp(ts)));
+    pub fn send_timestamp(&mut self, ts: Item<Message>) {
+        self.from_worker.send_item(ts);
     }
 
     fn handle_item(&mut self, item: Item<Message>) {
