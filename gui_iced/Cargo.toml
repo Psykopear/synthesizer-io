@@ -1,0 +1,14 @@
+[package]
+name = "daw-iced"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+iced = { path = "../iced", features = ["pure", "tokio"] }
+iced_native = { path = "../iced/native" }
+iced_pure = { path = "../iced/pure" }
+core = { path = "../synthesizer-io/core/" }
+cpal = { version = "0.13.4", features = ["jack"] }
+assert_no_alloc = "1.1.2"
