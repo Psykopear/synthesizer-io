@@ -1,7 +1,10 @@
-use druid::widget::prelude::*;
-use druid::{Color, Data, MouseButton, MouseEvent, Widget, WidgetExt, WidgetPod};
+use druid::widget::{prelude::*, Label};
+use druid::{Color, Data, MouseButton, MouseEvent, Widget};
 
-const BG_COLOR: Color = Color::rgb8(40, 44, 52);
+// const BG_COLOR: Color = Color::rgb8(40, 44, 52);
+const WHITE: Color = Color::rgb8(255, 255, 255);
+const RED: Color = Color::rgb8(255, 0, 0);
+// const BLACK: Color = Color::rgb8(0, 0, 0);
 
 #[derive(PartialEq, Data, Clone, Default)]
 pub struct SwitchState {
@@ -10,26 +13,22 @@ pub struct SwitchState {
 }
 
 pub struct Switch {
-    inner: WidgetPod<String, Box<dyn Widget<String>>>,
+    inner: Label<String>,
     text: String,
 }
 
 impl Switch {
     pub fn new(text: &'static str) -> Self {
         Switch {
-            inner: WidgetPod::new(
-                druid::widget::Label::new(text)
-                    .with_text_size(24.)
-                    .padding(4.)
-                    .boxed(),
-            ),
+            inner: Label::new(text),
             text: text.to_string(),
         }
     }
 }
 
 impl Widget<SwitchState> for Switch {
-    fn event(&mut self, _ctx: &mut EventCtx, event: &Event, data: &mut SwitchState, _env: &Env) {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut SwitchState, env: &Env) {
+        self.inner.event(ctx, event, &mut self.text, env);
         if !data.disabled {
             match event {
                 Event::MouseDown(MouseEvent {
@@ -37,25 +36,31 @@ impl Widget<SwitchState> for Switch {
                     ..
                 }) => {
                     data.on = !data.on;
+                    if data.on {
+                        self.inner.set_text_color(RED);
+                    } else {
+                        self.inner.set_text_color(WHITE);
+                    }
+                    ctx.request_layout();
+                    ctx.request_paint();
                 }
                 _ => (),
             }
         }
     }
 
-    fn update(&mut self, ctx: &mut UpdateCtx, old: &SwitchState, new: &SwitchState, _env: &Env) {
-        if old != new {
-            ctx.request_paint();
-        }
+    fn update(&mut self, ctx: &mut UpdateCtx, _old: &SwitchState, _new: &SwitchState, env: &Env) {
+        self.inner.update(ctx, &self.text, &self.text, env);
     }
 
     fn lifecycle(
         &mut self,
-        _ctx: &mut LifeCycleCtx,
-        _event: &LifeCycle,
+        ctx: &mut LifeCycleCtx,
+        event: &LifeCycle,
         _data: &SwitchState,
-        _env: &Env,
+        env: &Env,
     ) {
+        self.inner.lifecycle(ctx, event, &self.text, env);
     }
 
     fn layout(
@@ -69,15 +74,6 @@ impl Widget<SwitchState> for Switch {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &SwitchState, env: &Env) {
-        let mut env = env.to_owned();
-        if data.disabled {
-            env.set(druid::theme::TEXT_COLOR, BG_COLOR);
-        } else if data.on {
-            env.set(
-                druid::theme::TEXT_COLOR,
-                env.get(druid::theme::PRIMARY_DARK),
-            );
-        }
-        self.inner.paint_raw(ctx, &self.text, &env);
+        self.inner.paint(ctx, &self.text, &env);
     }
 }

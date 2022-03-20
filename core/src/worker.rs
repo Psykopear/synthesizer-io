@@ -14,6 +14,7 @@
 
 //! A worker, designed to produce audio in a lock-free manner.
 
+use ringbuf::RingBuffer;
 use std::ops::Deref;
 
 use crate::graph::{Graph, Message, Node};
@@ -23,6 +24,7 @@ use crate::queue::{Item, Queue, Receiver, Sender};
 pub struct Worker {
     to_worker: Receiver<Message>,
     from_worker: Sender<Message>,
+    ts_sender: ringbuf::Producer<u128>,
     graph: Graph,
     root: usize,
 }
@@ -30,18 +32,27 @@ pub struct Worker {
 impl Worker {
     /// Create a new worker, with the specified maximum number of graph nodes,
     /// and set up communication channels.
-    pub fn create(max_size: usize) -> (Worker, Sender<Message>, Receiver<Message>) {
+    pub fn create(
+        max_size: usize,
+    ) -> (
+        Worker,
+        Sender<Message>,
+        Receiver<Message>,
+        ringbuf::Consumer<u128>,
+    ) {
         let (tx, to_worker) = Queue::new();
         let (from_worker, rx) = Queue::new();
+        let rb = RingBuffer::<u128>::new(1);
+        let (mut ts_sender, mut ts_receiver) = rb.split();
         let graph = Graph::new(max_size);
         let worker = Worker {
             to_worker,
             from_worker,
-            // control_tx,
+            ts_sender,
             graph,
             root: 0,
         };
-        (worker, tx, rx)
+        (worker, tx, rx, ts_receiver)
     }
 
     /// Process a message. In normal operation, messages are sent to the
@@ -54,10 +65,6 @@ impl Worker {
     /// Convenience function for initializing one node in the graph
     pub fn handle_node(&mut self, node: Node) {
         self.handle_message(Message::Node(node));
-    }
-
-    pub fn send_timestamp(&mut self, ts: Item<Message>) {
-        self.from_worker.send_item(ts);
     }
 
     fn handle_item(&mut self, item: Item<Message>) {
@@ -92,6 +99,13 @@ impl Worker {
     // TODO: leave incoming items in the queue if they have a timestamp in the
     // future.
     pub fn work(&mut self, timestamp: u128) -> &[Buffer] {
+        // Send timestamp for synchronization
+        // Unused result. If the buffer is full, the engine didn't
+        // finish its loop yet, so we can just ignore it.
+        match self.ts_sender.push(timestamp) {
+            Ok(()) => (),
+            Err(_) => (),
+        };
         for item in self.to_worker.recv_items() {
             self.handle_item(item);
         }

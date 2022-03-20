@@ -69,7 +69,7 @@ fn main() {
     // Initialize the audio engine
     let mut engine = Engine::new(sample_rate, rx, tx, control_rx);
     engine.init();
-    engine.play();
+    engine.set_play();
     engine.set_loop(engine.tempo.ticks(0), engine.tempo.bars(2));
     // Bass synth
     let bass_track = engine.add_track();

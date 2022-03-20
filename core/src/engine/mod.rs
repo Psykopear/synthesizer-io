@@ -3,8 +3,7 @@ pub mod clip;
 pub mod note;
 pub mod tempo;
 pub mod track;
-
-use std::time::{Duration, Instant};
+pub mod message;
 
 use crate::engine::note::ClipNote;
 use crate::graph::{IntoBoxedSlice, Message, Node, Note, SetParam};
@@ -12,6 +11,7 @@ use crate::id_allocator::IdAllocator;
 use crate::module::Module;
 use crate::modules;
 use crate::queue::{Queue, Receiver, Sender};
+use ringbuf::Consumer;
 use time_calc::{Bars, Ticks};
 
 use self::clip::{Clip, ClipId};
@@ -27,8 +27,10 @@ pub struct Engine {
     rx: Receiver<Message>,
     tx: Sender<Message>,
 
-    ui_rx: Receiver<Message>,
-    ui_tx: Sender<Message>,
+    // Receiver for timestamp from realtime thread.
+    // Used for synchronization.
+    ts_rx: Consumer<u128>,
+
     id_alloc: IdAllocator,
 
     pub tempo: Tempo,
@@ -41,44 +43,31 @@ impl Engine {
         sample_rate: f32,
         rx: Receiver<Message>,
         tx: Sender<Message>,
-    ) -> (Engine, Sender<Message>, Receiver<Message>) {
+        ts_rx: Consumer<u128>,
+    ) -> Engine {
         let mut id_alloc = IdAllocator::new();
         // Master track
         id_alloc.reserve(0);
+
         // UI Communication
-        let (sender, ui_rx) = Queue::new();
-        let (ui_tx, receiver) = Queue::new();
-        (
-            Engine {
-                rx,
-                tx,
-                ui_rx,
-                ui_tx,
-                id_alloc,
-                tempo: Tempo::new(sample_rate as f64),
-                tracks: vec![],
-                events: vec![],
-            },
-            sender,
-            receiver,
-        )
+        // let (sender, ui_rx) = Queue::new();
+        // let (ui_tx, receiver) = Queue::new();
+        Engine {
+            rx,
+            tx,
+            ts_rx,
+            id_alloc,
+            tempo: Tempo::new(sample_rate as f64),
+            tracks: vec![],
+            events: vec![],
+        }
     }
 
     pub fn run_step(&mut self) {
         // We might have received 0 or more messages.
         // If we received 0 messages, we stop here.
         // If we receive more than one, we only consider the latest.
-        let ts = self
-            .rx
-            .recv_items()
-            .filter_map(|m| {
-                if let Message::Timestamp(t) = *m {
-                    Some(t)
-                } else {
-                    None
-                }
-            })
-            .last();
+        let ts = self.ts_rx.pop();
         if ts.is_none() {
             return;
         }
@@ -92,8 +81,6 @@ impl Engine {
         } else if self.tempo.start_time.is_none() {
             self.tempo.start_time = Some(ts);
         };
-
-        self.ui_tx.send(Message::Timestamp(ts));
 
         if self.tempo.prev_position.is_none()
             || self.tempo.current_position != self.tempo.prev_position.unwrap()

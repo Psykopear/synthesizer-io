@@ -1,2 +1,3 @@
 [workspace]
-members = ["core"]
+# members = ["core", "gui_druid", "gui_iced", "gui_egui"]
+members = ["core", "gui_druid", "gui_egui", "audio"]

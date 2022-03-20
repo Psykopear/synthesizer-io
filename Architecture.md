@@ -1,7 +1,8 @@
 # Audio callback
 - run the graph to generate the samples
 - read messages from the engine and update the graph
-- send messages to the engine
+- send timestamp to the engine for synchronization
+- send other messages to the engine for monitoring
 
 # Engine
 The engine runs on a separate thread.
@@ -23,5 +24,6 @@ The step:
 - Update engine's tempo structure with the last timestamp received from the audio thread
 
 # UI
-The ui updates periodically, something like 60fps should be enough.
+The ui should update periodically (aim to monitor refresh rate, but even a fixed 60fps should do)
+if the engine is playing, otherwise it should only update on events.
 At each update, it reads messages coming from the engine, and

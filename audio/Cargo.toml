@@ -1,14 +1,11 @@
 [package]
-name = "gui_egui"
+name = "audio"
 version = "0.1.0"
-authors = ["Federico Dolce <hello@docler.me>"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-eframe = "0.17.0" # Gives us egui, epi and web+native backends
 core = { path = "../core" }
-audio = { path = "../audio" }
 cpal = { path = "../../cpal", features = ["jack"] }
 assert_no_alloc = "1.1.2"
