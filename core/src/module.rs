@@ -16,7 +16,7 @@
 
 use std::any::Any;
 
-pub const N_SAMPLES_PER_CHUNK: usize = 32;
+pub const N_SAMPLES_PER_CHUNK: usize = 64;
 
 pub struct Buffer {
     // TODO: simd alignment

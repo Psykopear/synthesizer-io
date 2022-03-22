@@ -21,28 +21,37 @@ pub fn run<T>(
 where
     T: cpal::Sample,
 {
-    let mut start_time = None;
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
     let sample_rate = config.sample_rate;
     let ts_step =
-        (1.0 / sample_rate.0 as f64 * 1_000_000.) as u128 * N_SAMPLES_PER_CHUNK as u128 * 2;
+         (1_000_000_000 * N_SAMPLES_PER_CHUNK as u128) / sample_rate.0 as u128;
+
+    // TODO: We can either use the timestamp from the audio callback,
+    //       or keep track of nanoseconds passed ourselves, knowing the
+    //       sample rate and the data length. Make an informed decision.
+    let mut ts = 0;
+    // let mut start_time = None;
 
     let stream = device.build_output_stream(
         config,
-        move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
+        move |data: &mut [T], _info: &cpal::OutputCallbackInfo| {
             assert_no_alloc(|| {
-                if start_time.is_none() {
-                    start_time = Some(info.timestamp().callback);
-                }
+                // if start_time.is_none() {
+                //     start_time = Some(info.timestamp().callback);
+                // }
+                // let mut ts = info
+                //     .timestamp()
+                //     .callback
+                //     .duration_since(&start_time.unwrap())
+                //     .unwrap()
+                //     .as_nanos();
+                // println!("Pre: {}", ts);
                 let mut i = 0;
-                let mut ts = info
-                    .timestamp()
-                    .playback
-                    .duration_since(&start_time.unwrap())
-                    .unwrap()
-                    .as_nanos();
+                worker.send_ts(ts);
                 while i < data.len() {
                     let buf = worker.work(ts)[0].get();
+                    // TODO: This won't work if the audio buffer size is smaller than
+                    // N_SAMPLES_PER_CHUNK
                     for j in 0..N_SAMPLES_PER_CHUNK {
                         let value: T = cpal::Sample::from::<f32>(&buf[j]);
                         data[i + j * 2] = value;

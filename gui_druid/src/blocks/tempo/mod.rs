@@ -2,7 +2,7 @@ use core::time_calc::Ms;
 
 use druid::{
     widget::{Flex, Label},
-    Env, LensExt, Widget, WidgetExt,
+    LensExt, Widget, WidgetExt,
 };
 
 use crate::{
@@ -36,9 +36,9 @@ fn tempo_section() -> impl Widget<Tempo> {
         // Bars/Beats counter
         .with_child(Label::dynamic(|tempo: &Tempo, _env| {
             format!(
-                "Bar {:.0} Beat {:.0}",
-                tempo.current_bar.0,
-                tempo.current_beat.0 % tempo.time_signature.top as i64
+                "{:.0}.{:.0}",
+                tempo.current_bar,
+                tempo.current_beat % tempo.time_signature.bottom as f64
             )
         }))
 }
@@ -50,12 +50,7 @@ fn transport_section() -> impl Widget<Tempo> {
         .with_child(Switch::new("Play").lens(Tempo::play))
         .with_spacer(4.)
         // Stop button
-        .with_child(Label::new("Stop").on_click(
-            |_, tempo: &mut Tempo, _| {
-                tempo.play.on = false;
-                tempo.current_time = Ms(0.);
-            },
-        ))
+        .with_child(Label::new("Stop").on_click(|_, tempo: &mut Tempo, _| tempo.stop()))
         .with_spacer(4.)
         // Record button
         .with_child(Switch::new("Rec").lens(Tempo::rec))

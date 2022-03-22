@@ -1,9 +1,9 @@
 //! Interface for the audio engine.
 pub mod clip;
+pub mod message;
 pub mod note;
 pub mod tempo;
 pub mod track;
-pub mod message;
 
 use crate::engine::note::ClipNote;
 use crate::graph::{IntoBoxedSlice, Message, Node, Note, SetParam};
@@ -63,13 +63,13 @@ impl Engine {
         }
     }
 
-    pub fn run_step(&mut self) {
+    pub fn run_step(&mut self) -> Option<u128> {
         // We might have received 0 or more messages.
         // If we received 0 messages, we stop here.
         // If we receive more than one, we only consider the latest.
         let ts = self.ts_rx.pop();
         if ts.is_none() {
-            return;
+            return None;
         }
         let ts = ts.unwrap();
 
@@ -77,7 +77,7 @@ impl Engine {
             if self.tempo.start_time.is_some() {
                 self.tempo.start_time = None;
             }
-            return;
+            return Some(ts);
         } else if self.tempo.start_time.is_none() {
             self.tempo.start_time = Some(ts);
         };
@@ -122,6 +122,7 @@ impl Engine {
             }
         }
         self.tempo.step(ts);
+        Some(ts)
     }
 
     pub fn set_loop(&mut self, start: Ticks, end: Ticks) {

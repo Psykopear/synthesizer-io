@@ -94,18 +94,18 @@ impl Worker {
         }
     }
 
+    pub fn send_ts(&mut self, ts: u128) {
+        // Send timestamp for synchronization
+        // Unused result. If the buffer is full, the engine didn't
+        // finish its loop yet, so we can just ignore it.
+        self.ts_sender.push(ts);
+    }
+
     /// Process the incoming items, run the graph, and return the rendered audio
     /// buffers. Lock-free.
     // TODO: leave incoming items in the queue if they have a timestamp in the
     // future.
     pub fn work(&mut self, timestamp: u128) -> &[Buffer] {
-        // Send timestamp for synchronization
-        // Unused result. If the buffer is full, the engine didn't
-        // finish its loop yet, so we can just ignore it.
-        match self.ts_sender.push(timestamp) {
-            Ok(()) => (),
-            Err(_) => (),
-        };
         for item in self.to_worker.recv_items() {
             self.handle_item(item);
         }

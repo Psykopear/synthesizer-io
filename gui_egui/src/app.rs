@@ -41,6 +41,8 @@ impl epi::App for TemplateApp {
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, frame: &epi::Frame) {
         let Self { engine, .. } = self;
+        engine.run_step();
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
@@ -65,7 +67,6 @@ impl epi::App for TemplateApp {
             }
         });
 
-        engine.run_step();
         if engine.tempo.playing {
             ctx.request_repaint();
         }
